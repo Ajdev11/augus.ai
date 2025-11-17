@@ -1,11 +1,11 @@
-import './App.css';
+// App-level styles are handled by Tailwind in index.css
 
 function App() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="px-6 sm:px-8 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="text-xl font-extrabold tracking-tight">MIND by MIVA</div>
+          <div className="text-xl font-extrabold tracking-tight">augus.ai</div>
           <span className="rounded-full bg-gray-900 text-white text-xs font-medium px-2 py-0.5">
             Beta
           </span>
