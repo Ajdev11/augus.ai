@@ -1,5 +1,6 @@
 // App-level styles are handled by Tailwind in index.css
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -99,15 +100,15 @@ function App() {
               Interact wit Augus.AI
             </h1>
             <div className="mt-8 flex justify-center">
-              <button
-                type="button"
+              <Link
+                to="/dashboard"
                 className="inline-flex items-center justify-center rounded-full bg-gray-900 text-white px-6 sm:px-8 py-3 text-sm sm:text-base font-semibold shadow-sm hover:bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-0"
               >
                 Go To Session
                 <svg className="ml-2 h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l5 5a1 1 0 01-.001 1.414l-5 5a1 1 0 11-1.414-1.414L13.586 11H3a1 1 0 110-2h10.586l-3.293-3.293a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
-              </button>
+              </Link>
             </div>
             {isOffline && (
               <div className="mt-6 flex justify-center" role="status" aria-live="polite">
