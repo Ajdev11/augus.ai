@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
 import React, { useEffect, useRef, useState } from 'react';
 // PDF.js (disable worker to avoid bundler worker configuration)
-import * as pdfjsLib from 'pdfjs-dist/build/pdf';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
+import workerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
 export default function SessionDashboard() {
   const [isMuted, setIsMuted] = useState(false);
@@ -16,6 +18,10 @@ export default function SessionDashboard() {
   ]);
   const [userInput, setUserInput] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('OPENAI_API_KEY') || '');
+  // Quiz state
+  const [quiz, setQuiz] = useState([]); // [{ q, keywords: [] }]
+  const [qIndex, setQIndex] = useState(0);
+  const [awaitingAnswer, setAwaitingAnswer] = useState(false);
   const intervalRef = useRef(null);
   const SESSION_LIMIT_SECONDS = 15 * 60; // 15 minutes
 
@@ -46,11 +52,15 @@ export default function SessionDashboard() {
   const rmm = String(Math.floor((remaining % 3600) / 60)).padStart(2, '0');
   const rss = String(remaining % 60).padStart(2, '0');
 
+  function pushAssistant(text) {
+    setMessages((m) => [...m, { role: 'assistant', content: text }]);
+  }
+
   async function extractPdfText(file) {
     setLoadingDoc(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, useWorker: false }).promise;
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       let text = '';
       for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
@@ -101,6 +111,73 @@ export default function SessionDashboard() {
     return `From your document, here is the most relevant part:\n\n"${snippet}"\n\nSummary: The passage above is likely related to your question. If you need deeper reasoning, provide an OpenAI API key to enable richer answers.`;
   }
 
+  function extractKeywordsLocal(text, k = 6) {
+    const stop = new Set(['the','a','an','and','or','to','of','for','in','on','is','are','was','were','be','been','with','as','that','this','these','those','by','from','at','it','its','into','you','your','we','our','they','their','will','can','may','should','could','would','not','there','also','than','about','over','under','within','such']);
+    const tokens = (text.toLowerCase().match(/\b[a-z][a-z0-9-]{2,}\b/g) || []).filter(t => !stop.has(t));
+    const freq = new Map();
+    for (const t of tokens) freq.set(t, (freq.get(t) || 0) + 1);
+    const sorted = [...freq.entries()].sort((a,b)=>b[1]-a[1]).map(([w])=>w);
+    return Array.from(new Set(sorted)).slice(0, k);
+  }
+
+  async function generateQuiz() {
+    if (!docText) {
+      pushAssistant('Please upload a PDF first so I can generate questions.');
+      return;
+    }
+    pushAssistant('Generating a few questions from your document…');
+
+    // Try API for better questions, else fall back to local heuristic.
+    if (apiKey) {
+      try {
+        const context = docText.length > 12000 ? docText.slice(0, 12000) : docText;
+        const prompt = `You are a tutoring assistant. Read the document below and produce 5 short open-ended questions to test understanding. 
+Return strict JSON of the shape: {"questions":[{"q":"text of question","keywords":["k1","k2"]}, ...] } with 5 items. 
+Document:\n${context}`;
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.5,
+          }),
+        });
+        const data = await res.json();
+        const raw = data?.choices?.[0]?.message?.content || '';
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch { /* fall through */ }
+        if (parsed?.questions?.length) {
+          setQuiz(parsed.questions.slice(0,5));
+          setQIndex(0);
+          setAwaitingAnswer(true);
+          pushAssistant(`Question 1: ${parsed.questions[0].q}`);
+          return;
+        }
+      } catch (e) {
+        // ignore; fallback to local
+      }
+    }
+
+    // Local fallback: pick frequent keywords and form questions.
+    const keys = extractKeywordsLocal(docText, 5);
+    const qs = keys.map((k) => ({ q: `Explain "${k}" in the context of this document.`, keywords: [k] }));
+    setQuiz(qs);
+    setQIndex(0);
+    setAwaitingAnswer(true);
+    pushAssistant(`Question 1: ${qs[0].q}`);
+  }
+
+  function evaluateLocally(answer, keywords = []) {
+    const a = (answer || '').toLowerCase();
+    const hits = (keywords || []).filter(k => a.includes(String(k).toLowerCase()));
+    const score = keywords?.length ? Math.round((hits.length / keywords.length) * 100) : 0;
+    return { score, hits };
+  }
+
   async function ask(question) {
     if (!question.trim()) return;
     if (expired) {
@@ -112,6 +189,54 @@ export default function SessionDashboard() {
       setUserInput('');
       return;
     }
+
+    // If a quiz question is active, treat user's message as an answer.
+    if (awaitingAnswer && quiz[qIndex]) {
+      setMessages((m) => [...m, { role: 'user', content: question }]);
+      let feedback = '';
+      if (apiKey) {
+        try {
+          const current = quiz[qIndex];
+          const evalPrompt = `Question: ${current.q}\nStudent answer: ${question}\nKnown-keywords: ${(current.keywords || []).join(', ')}\nEvaluate briefly (2-3 sentences) and mention if the answer addresses the key ideas.`;
+          const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [{ role: 'user', content: evalPrompt }],
+              temperature: 0.4,
+            }),
+          });
+          const data = await res.json();
+          feedback = data?.choices?.[0]?.message?.content || '';
+        } catch {
+          // fallback
+        }
+      }
+      if (!feedback) {
+        const { score, hits } = evaluateLocally(question, quiz[qIndex].keywords);
+        feedback = `Your answer covers ${hits.length}/${(quiz[qIndex].keywords||[]).length} key term(s) [${hits.join(', ')}]. Estimated match: ${score}%.`;
+      }
+      pushAssistant(feedback);
+
+      // Next question
+      const next = qIndex + 1;
+      if (quiz[next]) {
+        setQIndex(next);
+        pushAssistant(`Question ${next + 1}: ${quiz[next].q}`);
+        setAwaitingAnswer(true);
+      } else {
+        pushAssistant('Great job! You have completed all questions for this session. You can continue asking questions or reset the session.');
+        setAwaitingAnswer(false);
+      }
+      setUserInput('');
+      return;
+    }
+
+    // Normal free-form question to the AI about the document.
     setMessages((m) => [...m, { role: 'user', content: question }]);
     setUserInput('');
     let answer = '';
@@ -217,7 +342,18 @@ export default function SessionDashboard() {
           <div className="mt-10 flex items-center gap-4">
             {!expired ? (
               <button
-                onClick={() => setRunning((v) => !v)}
+                onClick={async () => {
+                  if (!running) {
+                    if (!docText) {
+                      pushAssistant('Please upload a PDF before starting the session so I can generate questions.');
+                      return;
+                    }
+                    await generateQuiz();
+                    setRunning(true);
+                  } else {
+                    setRunning(false);
+                  }
+                }}
                 className="rounded-full bg-emerald-400/90 hover:bg-emerald-400 text-white font-semibold px-6 sm:px-8 py-3 shadow disabled:opacity-50"
               >
                 {running ? 'Pause Session' : 'Start Session'}
