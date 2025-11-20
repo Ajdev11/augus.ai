@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
 import React, { useEffect, useRef, useState } from 'react';
 // PDF.js (disable worker to avoid bundler worker configuration)
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
-import workerSrc from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs';
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+import * as pdfjsLib from 'pdfjs-dist/build/pdf';
+// Use Webpack's URL emission to point PDF.js to the local worker asset
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
 export default function SessionDashboard() {
   const [isMuted, setIsMuted] = useState(false);
@@ -18,6 +18,11 @@ export default function SessionDashboard() {
   ]);
   const [userInput, setUserInput] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('OPENAI_API_KEY') || '');
+  const [ttsVolume, setTtsVolume] = useState(() => {
+    const v = localStorage.getItem('TTS_VOLUME');
+    const n = v !== null ? parseFloat(v) : 0.8;
+    return isNaN(n) ? 0.8 : Math.min(1, Math.max(0, n));
+  });
   // Quiz state
   const [quiz, setQuiz] = useState([]); // [{ q, keywords: [] }]
   const [qIndex, setQIndex] = useState(0);
@@ -43,7 +48,7 @@ export default function SessionDashboard() {
       if (running) setRunning(false);
       if (!expired) setExpired(true);
     }
-  }, [elapsed, running, expired]);
+  }, [elapsed, running, expired, SESSION_LIMIT_SECONDS]);
 
   const hh = String(Math.floor(elapsed / 3600)).padStart(2, '0');
   const mm = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
@@ -54,8 +59,50 @@ export default function SessionDashboard() {
 
   function pushAssistant(text) {
     setMessages((m) => [...m, { role: 'assistant', content: text }]);
+    speak(text);
   }
 
+  // Basic TTS using the Web Speech API
+  function speak(text) {
+    try {
+      if (typeof window === 'undefined' || !window.speechSynthesis) return;
+      if (isMuted || !text) return;
+      const synth = window.speechSynthesis;
+      // Cancel any ongoing utterance to avoid overlap
+      synth.cancel();
+      const utterance = new SpeechSynthesisUtterance(String(text).slice(0, 500));
+      const voices = synth.getVoices?.() || [];
+      const en = voices.find(v => (v.lang || '').toLowerCase().startsWith('en'));
+      if (en) utterance.voice = en;
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      utterance.volume = Math.min(1, Math.max(0, ttsVolume));
+      synth.speak(utterance);
+    } catch {
+      // no-op if TTS unavailable
+    }
+  }
+
+  // Stop any speech when session expires or user mutes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      if (expired || isMuted) window.speechSynthesis.cancel();
+    }
+  }, [expired, isMuted]);
+
+  // Cleanup TTS on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  // Persist volume preference
+  useEffect(() => {
+    localStorage.setItem('TTS_VOLUME', String(ttsVolume));
+  }, [ttsVolume]);
   async function extractPdfText(file) {
     setLoadingDoc(true);
     try {
@@ -348,6 +395,10 @@ Document:\n${context}`;
                       pushAssistant('Please upload a PDF before starting the session so I can generate questions.');
                       return;
                     }
+                    // Friendly welcome before questions begin
+                    pushAssistant(
+                      `Welcome! We'll use "${docName || 'your document'}". I'll ask 5 short questions — reply in the chat to answer.`
+                    );
                     await generateQuiz();
                     setRunning(true);
                   } else {
@@ -386,8 +437,21 @@ Document:\n${context}`;
             <div className="text-3xl font-extrabold tabular-nums tracking-wider text-white">
               {hh}:{mm}:{ss}
             </div>
-            <div className="text-sm text-white/60">
+            <div className="flex items-center gap-2 text-sm text-white/60">
               {expired ? 'Time limit reached' : `Remaining ${rmm}:${rss}`}
+              <div className="flex items-center gap-1">
+                <span className="hidden sm:inline">Vol</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={ttsVolume}
+                  onChange={(e) => setTtsVolume(parseFloat(e.target.value))}
+                  className="w-20 accent-white"
+                  aria-label="Voice volume"
+                />
+              </div>
             </div>
           </div>
 
