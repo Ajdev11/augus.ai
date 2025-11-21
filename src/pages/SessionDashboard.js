@@ -23,12 +23,21 @@ export default function SessionDashboard() {
     const n = v !== null ? parseFloat(v) : 0.8;
     return isNaN(n) ? 0.8 : Math.min(1, Math.max(0, n));
   });
+  // Activity + check‑in
+  const [lastActivityTs, setLastActivityTs] = useState(() => Date.now());
+  const lastCheckinTsRef = useRef(0);
+  const CHECKIN_SECONDS = 30; // inactivity before AI checks in (30s)
   // Quiz state
   const [quiz, setQuiz] = useState([]); // [{ q, keywords: [] }]
   const [qIndex, setQIndex] = useState(0);
   const [awaitingAnswer, setAwaitingAnswer] = useState(false);
   const intervalRef = useRef(null);
   const SESSION_LIMIT_SECONDS = 15 * 60; // 15 minutes
+  // Voice input (SpeechRecognition)
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef(null);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const silenceTimerRef = useRef(null);
 
   useEffect(() => {
     if (running) {
@@ -103,6 +112,98 @@ export default function SessionDashboard() {
   useEffect(() => {
     localStorage.setItem('TTS_VOLUME', String(ttsVolume));
   }, [ttsVolume]);
+
+  // Initialize browser SpeechRecognition (voice answers)
+  useEffect(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = 'en-US';
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    rec.onresult = (e) => {
+      setLastActivityTs(Date.now());
+      // Combine latest chunk
+      const result = e.results[e.resultIndex];
+      const text = result?.[0]?.transcript;
+      if (text) setLiveTranscript((prev) => (prev ? `${prev} ${text}` : text));
+      // (Re)start a 10s silence timer
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        finalizeVoiceAnswer();
+      }, 10000);
+    };
+    rec.onend = () => {
+      setListening(false);
+      // If still waiting for answer, restart automatically to feel continuous
+      if (awaitingAnswer && running && !expired) {
+        try {
+          rec.start();
+          setListening(true);
+        } catch {}
+      }
+    };
+    recognitionRef.current = rec;
+    return () => {
+      try { rec.abort(); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function startListening() {
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    try {
+      rec.start();
+      setListening(true);
+    } catch {}
+  }
+  function stopListening() {
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    try {
+      rec.stop();
+      setListening(false);
+    } catch {}
+  }
+
+  function finalizeVoiceAnswer() {
+    const text = (liveTranscript || '').trim();
+    setLiveTranscript('');
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (text) {
+      ask(text);
+    } else if (awaitingAnswer) {
+      // No input for 10s: proceed to next question
+      ask('skip');
+    }
+  }
+
+  // Inactivity check‑in
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = Date.now();
+      const delta = Math.floor((now - lastActivityTs) / 1000);
+      const sinceCheck = Math.floor((now - (lastCheckinTsRef.current || 0)) / 1000);
+      if (
+        running &&
+        !expired &&
+        docText &&
+        awaitingAnswer && // only check in when waiting on the student
+        delta >= CHECKIN_SECONDS &&
+        sinceCheck >= CHECKIN_SECONDS // avoid spamming
+      ) {
+        lastCheckinTsRef.current = now;
+        pushAssistant("Still with me? Would you like a hint, or should I repeat the question? You can also say 'skip' to move on.");
+        // ensure we're listening again after check-in
+        startListening();
+      }
+    }, 15000);
+    return () => clearInterval(id);
+  }, [running, expired, docText, awaitingAnswer, lastActivityTs]);
   async function extractPdfText(file) {
     setLoadingDoc(true);
     try {
@@ -167,6 +268,14 @@ export default function SessionDashboard() {
     return Array.from(new Set(sorted)).slice(0, k);
   }
 
+  function localHint(currentQuestion) {
+    // Provide a short hint by surfacing a few keywords and a tiny doc snippet
+    const keys = quiz[qIndex]?.keywords || extractKeywordsLocal(docText, 3);
+    const piece = localAnswer(currentQuestion, docText);
+    const quote = piece.split('"')[1] || '';
+    return `Hint: focus on ${keys.map(k=>`"${k}"`).join(', ')}. ${quote ? `Consider this part of the document: “${quote.slice(0, 160)}${quote.length>160?'…':''}”` : ''}`;
+  }
+
   async function generateQuiz() {
     if (!docText) {
       pushAssistant('Please upload a PDF first so I can generate questions.');
@@ -178,9 +287,9 @@ export default function SessionDashboard() {
     if (apiKey) {
       try {
         const context = docText.length > 12000 ? docText.slice(0, 12000) : docText;
-        const prompt = `You are a tutoring assistant. Read the document below and produce 5 short open-ended questions to test understanding. 
-Return strict JSON of the shape: {"questions":[{"q":"text of question","keywords":["k1","k2"]}, ...] } with 5 items. 
-Document:\n${context}`;
+        const prompt = `You are an expert tutor. From the document below, produce 5 progressively deeper, open-ended questions.
+For each item include 2-5 key concepts you expect in a strong answer.
+Return strict JSON:\n{"questions":[{"q":"...", "keywords":["k1","k2","k3"]}, ...]}\nDocument:\n${context}`;
         const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -190,7 +299,7 @@ Document:\n${context}`;
           body: JSON.stringify({
             model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: prompt }],
-            temperature: 0.5,
+            temperature: 0.4,
           }),
         });
         const data = await res.json();
@@ -216,6 +325,7 @@ Document:\n${context}`;
     setQIndex(0);
     setAwaitingAnswer(true);
     pushAssistant(`Question 1: ${qs[0].q}`);
+    startListening();
   }
 
   function evaluateLocally(answer, keywords = []) {
@@ -239,12 +349,45 @@ Document:\n${context}`;
 
     // If a quiz question is active, treat user's message as an answer.
     if (awaitingAnswer && quiz[qIndex]) {
+      setLastActivityTs(Date.now());
+
+      // Handle commands
+      const lower = question.trim().toLowerCase();
+      if (lower === 'hint' || lower.startsWith('hint')) {
+        setMessages((m) => [...m, { role: 'user', content: question }]);
+        const hint = localHint(quiz[qIndex].q);
+        pushAssistant(hint);
+        setUserInput('');
+        return;
+      }
+      if (lower === 'skip' || lower.startsWith('skip')) {
+        setMessages((m) => [...m, { role: 'user', content: question }]);
+        const next = qIndex + 1;
+        if (quiz[next]) {
+          setQIndex(next);
+          pushAssistant(`Okay, skipping. Question ${next + 1}: ${quiz[next].q}`);
+        } else {
+          pushAssistant('We have finished all questions. Ask me anything else or reset the session to start over.');
+          setAwaitingAnswer(false);
+        }
+        setUserInput('');
+        return;
+      }
+
       setMessages((m) => [...m, { role: 'user', content: question }]);
       let feedback = '';
       if (apiKey) {
         try {
           const current = quiz[qIndex];
-          const evalPrompt = `Question: ${current.q}\nStudent answer: ${question}\nKnown-keywords: ${(current.keywords || []).join(', ')}\nEvaluate briefly (2-3 sentences) and mention if the answer addresses the key ideas.`;
+          const evalPrompt = `You are an expert tutor. Evaluate the student's answer concisely with depth.
+Question: ${current.q}
+Expected key concepts: ${(current.keywords || []).join(', ')}
+Student answer: ${question}
+Use ONLY the provided document context. Provide at most 4 short bullet points:
+- Correctness and coverage of key ideas
+- Missing or incorrect points
+- One improvement suggestion
+- 1 short reinforcing tip or next step`;
           const res = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -254,7 +397,7 @@ Document:\n${context}`;
             body: JSON.stringify({
               model: 'gpt-4o-mini',
               messages: [{ role: 'user', content: evalPrompt }],
-              temperature: 0.4,
+              temperature: 0.2,
             }),
           });
           const data = await res.json();
@@ -265,7 +408,7 @@ Document:\n${context}`;
       }
       if (!feedback) {
         const { score, hits } = evaluateLocally(question, quiz[qIndex].keywords);
-        feedback = `Your answer covers ${hits.length}/${(quiz[qIndex].keywords||[]).length} key term(s) [${hits.join(', ')}]. Estimated match: ${score}%.`;
+        feedback = `Your answer covers ${hits.length}/${(quiz[qIndex].keywords||[]).length} key term(s) [${hits.join(', ')}]. Estimated match: ${score}%. ${score < 60 ? 'Want a hint? Say "hint".' : ''}`;
       }
       pushAssistant(feedback);
 
@@ -275,15 +418,18 @@ Document:\n${context}`;
         setQIndex(next);
         pushAssistant(`Question ${next + 1}: ${quiz[next].q}`);
         setAwaitingAnswer(true);
+        startListening();
       } else {
         pushAssistant('Great job! You have completed all questions for this session. You can continue asking questions or reset the session.');
         setAwaitingAnswer(false);
+        stopListening();
       }
       setUserInput('');
       return;
     }
 
     // Normal free-form question to the AI about the document.
+    setLastActivityTs(Date.now());
     setMessages((m) => [...m, { role: 'user', content: question }]);
     setUserInput('');
     let answer = '';
@@ -401,8 +547,11 @@ Document:\n${context}`;
                     );
                     await generateQuiz();
                     setRunning(true);
+                    // begin listening for spoken answer
+                    startListening();
                   } else {
                     setRunning(false);
+                    stopListening();
                   }
                 }}
                 className="rounded-full bg-emerald-400/90 hover:bg-emerald-400 text-white font-semibold px-6 sm:px-8 py-3 shadow disabled:opacity-50"
@@ -471,22 +620,44 @@ Document:\n${context}`;
                   </div>
                 ))}
               </div>
-              <div className="mt-4 flex items-center gap-2">
-                <input
-                  value={userInput}
-                  onChange={(e) => setUserInput(e.target.value)}
-                  placeholder="Ask a question about the uploaded PDF…"
-                  className="flex-1 rounded-lg border border-black/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black/20 disabled:bg-gray-50 disabled:text-gray-400"
-                  disabled={expired}
-                />
-                <button
-                  onClick={() => ask(userInput)}
-                  className="rounded-lg bg-gray-900 hover:bg-black text-white px-4 py-2 font-semibold disabled:opacity-50"
-                  disabled={expired}
-                >
-                  Send
-                </button>
-              </div>
+              {awaitingAnswer ? (
+                <div className="mt-4 flex items-center gap-3 text-sm">
+                  <span className={`inline-block h-2 w-2 rounded-full ${listening ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
+                  <span className="text-[#0b2545]">{listening ? 'Listening for your answer…' : 'Mic paused'}</span>
+                  <button onClick={startListening} className="rounded-lg bg-gray-900 hover:bg-black text-white px-3 py-1 font-semibold">
+                    Listen
+                  </button>
+                  <button onClick={stopListening} className="rounded-lg bg-slate-200 hover:bg-slate-300 text-[#0b2545] px-3 py-1 font-semibold">
+                    Stop
+                  </button>
+                  <span className="text-xs text-[#0b2545]/70 ml-1">Say “hint” or “skip” anytime.</span>
+                </div>
+              ) : (
+                <div className="mt-4 flex items-center gap-2">
+                  <input
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    placeholder="Ask a question about the uploaded PDF…"
+                    className="flex-1 rounded-lg border border-black/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-black/20 disabled:bg-gray-50 disabled:text-gray-400"
+                    disabled={expired}
+                  />
+                  <button
+                    onClick={() => ask(userInput)}
+                    className="rounded-lg bg-gray-900 hover:bg-black text-white px-4 py-2 font-semibold disabled:opacity-50"
+                    disabled={expired}
+                  >
+                    Send
+                  </button>
+                </div>
+              )}
+              {liveTranscript && awaitingAnswer && (
+                <div className="mt-3">
+                  <div className="text-xs text-[#0b2545]/60 mb-1">You (speaking)…</div>
+                  <div className="inline-block rounded-2xl px-3 py-2 text-sm bg-[#0b2545] text-white/90 opacity-90">
+                    {liveTranscript}
+                  </div>
+                </div>
+              )}
               <div className="mt-3 flex items-center gap-2">
                 <input
                   value={apiKey}
