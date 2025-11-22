@@ -38,6 +38,7 @@ export default function SessionDashboard() {
   const recognitionRef = useRef(null);
   const [liveTranscript, setLiveTranscript] = useState('');
   const silenceTimerRef = useRef(null);
+  const lastResultTsRef = useRef(0);
 
   useEffect(() => {
     if (running) {
@@ -121,12 +122,23 @@ export default function SessionDashboard() {
     rec.lang = 'en-US';
     rec.interimResults = true;
     rec.maxAlternatives = 1;
+    rec.onstart = () => {
+      setListening(true);
+      setLiveTranscript('');
+      lastResultTsRef.current = Date.now();
+      // Fallback timer: if we never get a result, still finalize after 10s
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        finalizeVoiceAnswer();
+      }, 10000);
+    };
     rec.onresult = (e) => {
       setLastActivityTs(Date.now());
       // Combine latest chunk
       const result = e.results[e.resultIndex];
       const text = result?.[0]?.transcript;
       if (text) setLiveTranscript((prev) => (prev ? `${prev} ${text}` : text));
+      lastResultTsRef.current = Date.now();
       // (Re)start a 10s silence timer
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = setTimeout(() => {
@@ -135,12 +147,28 @@ export default function SessionDashboard() {
     };
     rec.onend = () => {
       setListening(false);
-      // If still waiting for answer, restart automatically to feel continuous
+      // Always finalize what we have on end; if empty and awaiting, skip
+      if (awaitingAnswer && running && !expired) {
+        finalizeVoiceAnswer();
+      }
+      // If still waiting for next answer, restart automatically
       if (awaitingAnswer && running && !expired) {
         try {
           rec.start();
           setListening(true);
         } catch {}
+      }
+    };
+    rec.onerror = (e) => {
+      setListening(false);
+      if (awaitingAnswer && running && !expired) {
+        // Fall back to skip on mic errors after a short moment
+        setTimeout(() => finalizeVoiceAnswer(), 500);
+      }
+      if (e?.error === 'not-allowed') {
+        pushAssistant('Microphone permission denied. Please allow mic access and click Listen.');
+      } else if (e?.error === 'no-speech') {
+        // Will be handled by finalizeVoiceAnswer -> skip
       }
     };
     recognitionRef.current = rec;
@@ -177,8 +205,10 @@ export default function SessionDashboard() {
     if (text) {
       ask(text);
     } else if (awaitingAnswer) {
-      // No input for 10s: proceed to next question
-      ask('skip');
+      // No input captured: do NOT skip automatically; keep the conversation alive
+      pushAssistant("I didn't catch that. I'm listening—take your time. You can also say “hint”, “repeat”, or “skip” when ready.");
+      // Re-arm listening so the student can continue speaking
+      startListening();
     }
   }
 
