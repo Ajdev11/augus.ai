@@ -1,15 +1,31 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import React, { useEffect, useRef, useState } from 'react';
-// PDF.js (disable worker to avoid bundler worker configuration)
 import * as pdfjsLib from 'pdfjs-dist/build/pdf';
-// Use Webpack's URL emission to point PDF.js to the local worker asset
+import { apiFetch } from '../api';
+import { logout as doLogout } from '../auth';
+// Configure PDF.js worker after all imports
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
+function decodeEmailFromToken() {
+  try {
+    const raw = localStorage.getItem('augus_token') || '';
+    const [, payload] = raw.split('.');
+    if (!payload) return '';
+    const json = JSON.parse(atob(payload));
+    return json.email || '';
+  } catch {
+    return '';
+  }
+}
+
 export default function SessionDashboard() {
+  const navigate = useNavigate();
   const [isMuted, setIsMuted] = useState(false);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [expired, setExpired] = useState(false);
+  const [userEmail, setUserEmail] = useState(() => decodeEmailFromToken());
+  const [showLogout, setShowLogout] = useState(false);
   const [docName, setDocName] = useState('');
   const [docText, setDocText] = useState('');
   const [loadingDoc, setLoadingDoc] = useState(false);
@@ -39,6 +55,22 @@ export default function SessionDashboard() {
   const [liveTranscript, setLiveTranscript] = useState('');
   const silenceTimerRef = useRef(null);
   const lastResultTsRef = useRef(0);
+
+  // Fetch current user
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await apiFetch('/auth/me');
+        if (mounted) setUserEmail(res.user?.email || '');
+      } catch {
+        doLogout();
+        navigate('/');
+      }
+    })();
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (running) {
@@ -510,13 +542,52 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
         <div className="flex items-center gap-3">
           <Link to="/" className="text-xl font-extrabold tracking-tight hover:opacity-90">augus.ai</Link>
         </div>
-        <Link to="/session" className="text-sm font-medium text-white/80 hover:text-white">
-          Need Help?
-        </Link>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-white/80">{userEmail || 'Account'}</span>
+          <button
+            className="text-sm font-medium text-white/80 hover:text-white rounded-full ring-1 ring-white/15 px-3 py-1.5"
+            onClick={() => setShowLogout(true)}
+          >
+            Logout
+          </button>
+        </div>
       </header>
 
       {/* Main content */}
       <main className="relative px-6 sm:px-10">
+        {showLogout && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/60" onClick={() => setShowLogout(false)} />
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="relative w-full max-w-sm rounded-2xl bg-[#0b0b0b] text-white ring-1 ring-white/10 p-6 shadow-2xl"
+            >
+              <div className="text-lg font-semibold">End session and log out?</div>
+              <p className="mt-2 text-sm text-white/70 break-words">
+                {userEmail ? `You are signed in as ${userEmail}.` : 'You are signed in.'}
+              </p>
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <button
+                  className="rounded-full px-4 py-2 text-sm font-medium ring-1 ring-white/15 hover:bg-white/5"
+                  onClick={() => setShowLogout(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="rounded-full bg-rose-600 hover:bg-rose-500 px-4 py-2 text-sm font-semibold text-white"
+                  onClick={() => {
+                    setShowLogout(false);
+                    doLogout();
+                    navigate('/');
+                  }}
+                >
+                  Log out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Document upload (vertical, pinned to viewport right like header) */}
         <div className="absolute right-6 sm:right-10 top-24 w-64">
           <div className="flex flex-col items-end gap-2 sm:gap-3 text-right">
