@@ -4,7 +4,7 @@ import { login } from '../auth';
 import { apiFetch } from '../api';
 
 export default function SessionPage() {
-  const [mode, setMode] = useState('signup'); // 'signup' | 'signin'
+  const [mode, setMode] = useState('signup'); // 'signup' | 'signin' | 'forgot'
   const navigate = useNavigate();
 
   async function handleSignup({ email, password }) {
@@ -48,7 +48,7 @@ export default function SessionPage() {
         </div>
 
         <div className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-sm p-6">
-          {mode === 'signup' ? <SignupForm onSuccess={handleSignup} /> : <SigninForm onSuccess={handleSignin} />}
+          {mode === 'signup' ? <SignupForm onSuccess={handleSignup} /> : mode === 'signin' ? <SigninForm onSuccess={handleSignin} onForgot={()=>setMode('forgot')} /> : <ForgotForm onBack={()=>setMode('signin')} />}
           <SocialAuth />
           <div className="mt-6 text-center text-xs text-white/60">
             By continuing you agree to the Terms and Privacy Policy.
@@ -101,7 +101,7 @@ function SignupForm({ onSuccess }) {
   );
 }
 
-function SigninForm({ onSuccess }) {
+function SigninForm({ onSuccess, onForgot }) {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -116,7 +116,7 @@ function SigninForm({ onSuccess }) {
           <input type="checkbox" className="rounded bg-black/40 border-white/20" />
           Remember me
         </label>
-        <button type="button" className="hover:text-white">Forgot password?</button>
+        <button type="button" className="hover:text-white" onClick={onForgot}>Forgot password?</button>
       </div>
       <button
         type="button"
@@ -131,6 +131,45 @@ function SigninForm({ onSuccess }) {
       >
         {loading ? 'Signing in…' : 'Sign in'}
       </button>
+    </form>
+  );
+}
+
+function ForgotForm({ onBack }) {
+  const [email, setEmail] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [message, setMessage] = React.useState('');
+  const [error, setError] = React.useState('');
+  return (
+    <form className="space-y-3">
+      {message && <div className="text-xs text-emerald-400">{message}</div>}
+      {error && <div className="text-xs text-red-400">{error}</div>}
+      <Input label="Email" type="email" placeholder="you@domain.com" value={email} onChange={(e)=>setEmail(e.target.value)} />
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={loading}
+          className="flex-1 rounded-full bg-gray-900 hover:bg-black text-white font-semibold py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-50"
+          onClick={async()=>{
+            try{
+              setLoading(true); setError(''); setMessage('');
+              let res;
+              try {
+                res = await apiFetch('/auth/forgot', { method:'POST', body: JSON.stringify({ email }) });
+              } catch (err) {
+                // Fallback: GET with query for environments where JSON body parsing fails
+                res = await apiFetch(`/auth/forgot?email=${encodeURIComponent(email)}`, { method: 'GET' });
+              }
+              setMessage(res.resetUrl ? `Reset link ready: ${window.location.origin}/#${res.resetUrl}` : 'If the email exists, a reset link has been sent.');
+            }catch(e){ setError(e.message); } finally { setLoading(false); }
+          }}
+        >
+          {loading ? 'Sending…' : 'Send reset link'}
+        </button>
+        <button type="button" className="rounded-full ring-1 ring-white/15 px-4 py-2 text-sm hover:bg-white/5" onClick={onBack}>
+          Back to sign in
+        </button>
+      </div>
     </form>
   );
 }
