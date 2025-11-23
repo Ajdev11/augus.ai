@@ -1,4 +1,4 @@
-const API_BASE =
+export const API_BASE =
   (typeof window !== 'undefined' && window.location && window.location.port === '3000')
     ? 'http://localhost:4000'
     : '';

@@ -4,12 +4,14 @@ const morgan = require('morgan');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const path = require('path');
-const authRoutes = require('./routes/auth');
-const oauthRoutes = require('./routes/oauth');
 const session = require('express-session');
 const passport = require('passport');
 
+// Load env BEFORE requiring routes (so providers enable correctly)
 dotenv.config({ path: path.join(__dirname, '.env') });
+
+const authRoutes = require('./routes/auth');
+const oauthRoutes = require('./routes/oauth');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));

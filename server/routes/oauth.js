@@ -39,6 +39,7 @@ async function upsertUserFromProfile({ email, name, providerKey, providerId }) {
 
 // Configure Google
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  console.log('[OAuth] Google enabled');
   passport.use(
     new GoogleStrategy(
       {

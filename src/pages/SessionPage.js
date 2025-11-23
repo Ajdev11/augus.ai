@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../auth';
-import { apiFetch } from '../api';
+import { apiFetch, API_BASE } from '../api';
 
 export default function SessionPage() {
   const [mode, setMode] = useState('signup'); // 'signup' | 'signin' | 'forgot'
@@ -171,6 +171,7 @@ function ForgotForm({ onBack }) {
 
 function SocialAuth() {
   const providers = { google: true, github: true, apple: true }; // default links will work when configured
+  const base = API_BASE || '';
   return (
     <div className="mt-7">
       <div className="relative">
@@ -183,7 +184,7 @@ function SocialAuth() {
       </div>
       <div className="mt-5 grid grid-cols-3 gap-3">
         <a
-          href="/api/oauth/google"
+          href={`${base}/api/oauth/google`}
           className={`inline-flex items-center justify-center gap-2 rounded-lg ${providers.google ? 'bg-white text-black hover:bg-white/90' : 'bg-white/20 text-white/50 cursor-not-allowed'} px-3 py-2 text-sm font-semibold shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
           aria-label="Continue with Google"
           onClick={(e)=>{ if(!providers.google) e.preventDefault(); }}
@@ -199,7 +200,7 @@ function SocialAuth() {
           <span className="sr-only">Google</span>
         </a>
         <a
-          href="/api/oauth/github"
+          href={`${base}/api/oauth/github`}
           className={`inline-flex items-center justify-center gap-2 rounded-lg ${providers.github ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-white/10 text-white/40 cursor-not-allowed'} px-3 py-2 text-sm font-semibold ring-1 ring-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
           aria-label="Continue with GitHub"
           onClick={(e)=>{ if(!providers.github) e.preventDefault(); }}
@@ -215,7 +216,7 @@ function SocialAuth() {
           <span className="sr-only">GitHub</span>
         </a>
         <a
-          href="/api/oauth/apple"
+          href={`${base}/api/oauth/apple`}
           className={`inline-flex items-center justify-center gap-2 rounded-lg ${providers.apple ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-white/10 text-white/40 cursor-not-allowed'} px-3 py-2 text-sm font-semibold ring-1 ring-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
           aria-label="Continue with Apple"
           onClick={(e)=>{ if(!providers.apple) e.preventDefault(); }}
