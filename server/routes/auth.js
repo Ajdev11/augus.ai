@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const PasswordReset = require('../models/PasswordReset');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -52,31 +53,80 @@ router.get('/me', auth, async (req, res, next) => {
   }
 });
 
-// Request password reset - dev: returns link
+async function sendResetEmail(email, resetUrl) {
+  try {
+    let transporter;
+    let mode = 'smtp';
+
+    if ((process.env.SMTP_USER && process.env.SMTP_PASS) || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)) {
+      const isGmail =
+        (process.env.SMTP_HOST && String(process.env.SMTP_HOST).toLowerCase().includes('gmail')) ||
+        (!process.env.SMTP_HOST && String(process.env.SMTP_USER || '').toLowerCase().endsWith('@gmail.com'));
+      const host = process.env.SMTP_HOST || (isGmail ? 'smtp.gmail.com' : 'smtp.gmail.com');
+      const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
+      const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' ? true : false;
+      transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+      });
+      mode = isGmail ? 'gmail' : 'smtp';
+    } else {
+      // Dev/test fallback: ephemeral inbox via Ethereal
+      const testAccount = await nodemailer.createTestAccount();
+      transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: { user: testAccount.user, pass: testAccount.pass },
+      });
+      mode = 'ethereal';
+    }
+
+    const info = await transporter.sendMail({
+      from: process.env.FROM_EMAIL || process.env.SMTP_USER || 'no-reply@augus.ai',
+      to: email,
+      subject: 'Reset your augus.ai password',
+      text: `Click the link to reset your password: ${resetUrl}`,
+      html: `<p>Click the link to reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p>`,
+    });
+
+    // Helpful developer logs
+    console.log('[Mailer]', `provider=${mode}`);
+    console.log('[Password reset link]', resetUrl);
+    if (mode === 'ethereal') {
+      const preview = nodemailer.getTestMessageUrl(info);
+      if (preview) console.log('[Email preview URL]', preview);
+    }
+  } catch (e) {
+    console.error('Email send error', e);
+  }
+}
+
+// Request password reset - sends email if user exists
 router.post('/forgot', async (req, res, next) => {
   try {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ error: 'Email is required' });
     const user = await User.findOne({ email });
-    if (!user) {
-      // Do not reveal user existence; still respond ok
-      return res.json({ ok: true });
-    }
+    if (!user) return res.json({ ok: true });
     // Invalidate previous tokens for this user
     await PasswordReset.deleteMany({ userId: user._id, usedAt: { $exists: false } });
     const token = crypto.randomBytes(24).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await PasswordReset.create({ userId: user._id, tokenHash, expiresAt });
-    const resetUrl = `/reset?token=${token}`;
-    // In production send email instead of returning URL
-    return res.json({ ok: true, resetUrl });
+    const base = process.env.APP_BASE_URL || 'http://localhost:3000';
+    const resetUrl = `${base}/#/reset?token=${token}`;
+    await sendResetEmail(email, resetUrl);
+    return res.json({ ok: true });
   } catch (e) {
     next(e);
   }
 });
 
-// GET fallback for environments having JSON body parsing issues (dev only)
+// GET fallback for environments having JSON body parsing issues (dev only) - same behavior
 router.get('/forgot', async (req, res, next) => {
   try {
     const email = req.query.email;
@@ -88,8 +138,10 @@ router.get('/forgot', async (req, res, next) => {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
     await PasswordReset.create({ userId: user._id, tokenHash, expiresAt });
-    const resetUrl = `/reset?token=${token}`;
-    return res.json({ ok: true, resetUrl });
+    const base = process.env.APP_BASE_URL || 'http://localhost:3000';
+    const resetUrl = `${base}/#/reset?token=${token}`;
+    await sendResetEmail(email, resetUrl);
+    return res.json({ ok: true });
   } catch (e) {
     next(e);
   }

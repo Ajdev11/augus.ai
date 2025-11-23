@@ -5,14 +5,29 @@ const API_BASE =
 
 export async function apiFetch(path, options = {}) {
   const token = localStorage.getItem('augus_token');
-  const headers = {
-    'Content-Type': 'application/json',
+  const method = (options.method || 'GET').toUpperCase();
+  const baseHeaders = {
     ...(options.headers || {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  const res = await fetch(`${API_BASE}/api${path}`, { ...options, headers });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || 'Request failed');
+  const headers =
+    method === 'GET' || method === 'HEAD'
+      ? baseHeaders
+      : { 'Content-Type': 'application/json', ...baseHeaders };
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api${path}`, { ...options, method, headers, mode: 'cors' });
+  } catch (e) {
+    throw new Error('Network error: failed to reach API');
+  }
+  let json = {};
+  try {
+    json = await res.json();
+  } catch {
+    // ignore non-JSON
+  }
+  if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
   return json;
 }
 

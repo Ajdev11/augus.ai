@@ -7,6 +7,7 @@ import SessionPage from './pages/SessionPage';
 import SessionDashboard from './pages/SessionDashboard';
 import ProtectedRoute from './ProtectedRoute';
 import ResetPassword from './pages/ResetPassword';
+import OAuthHandler from './pages/OAuthHandler';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
@@ -16,6 +17,7 @@ root.render(
         <Route path="/" element={<App />} />
         <Route path="/session" element={<SessionPage />} />
         <Route path="/reset" element={<ResetPassword />} />
+        <Route path="/oauth" element={<OAuthHandler />} />
         <Route
           path="/dashboard"
           element={

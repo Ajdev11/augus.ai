@@ -153,14 +153,9 @@ function ForgotForm({ onBack }) {
           onClick={async()=>{
             try{
               setLoading(true); setError(''); setMessage('');
-              let res;
-              try {
-                res = await apiFetch('/auth/forgot', { method:'POST', body: JSON.stringify({ email }) });
-              } catch (err) {
-                // Fallback: GET with query for environments where JSON body parsing fails
-                res = await apiFetch(`/auth/forgot?email=${encodeURIComponent(email)}`, { method: 'GET' });
-              }
-              setMessage(res.resetUrl ? `Reset link ready: ${window.location.origin}/#${res.resetUrl}` : 'If the email exists, a reset link has been sent.');
+              // Use GET by default for maximum compatibility
+              await apiFetch(`/auth/forgot?email=${encodeURIComponent(email)}`, { method: 'GET' });
+              setMessage('If the email exists, a reset link has been sent.');
             }catch(e){ setError(e.message); } finally { setLoading(false); }
           }}
         >
@@ -175,6 +170,7 @@ function ForgotForm({ onBack }) {
 }
 
 function SocialAuth() {
+  const providers = { google: true, github: true, apple: true }; // default links will work when configured
   return (
     <div className="mt-7">
       <div className="relative">
@@ -186,11 +182,11 @@ function SocialAuth() {
         </div>
       </div>
       <div className="mt-5 grid grid-cols-3 gap-3">
-        <button
-          type="button"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white text-black px-3 py-2 text-sm font-semibold shadow-sm hover:bg-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+        <a
+          href="/api/oauth/google"
+          className={`inline-flex items-center justify-center gap-2 rounded-lg ${providers.google ? 'bg-white text-black hover:bg-white/90' : 'bg-white/20 text-white/50 cursor-not-allowed'} px-3 py-2 text-sm font-semibold shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
           aria-label="Continue with Google"
-          disabled
+          onClick={(e)=>{ if(!providers.google) e.preventDefault(); }}
         >
           <img
             src="https://cdn.simpleicons.org/google/000000"
@@ -201,12 +197,12 @@ function SocialAuth() {
             height="20"
           />
           <span className="sr-only">Google</span>
-        </button>
-        <button
-          type="button"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 text-white px-3 py-2 text-sm font-semibold ring-1 ring-white/15 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+        </a>
+        <a
+          href="/api/oauth/github"
+          className={`inline-flex items-center justify-center gap-2 rounded-lg ${providers.github ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-white/10 text-white/40 cursor-not-allowed'} px-3 py-2 text-sm font-semibold ring-1 ring-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
           aria-label="Continue with GitHub"
-          disabled
+          onClick={(e)=>{ if(!providers.github) e.preventDefault(); }}
         >
           <img
             src="https://cdn.simpleicons.org/github/FFFFFF"
@@ -217,12 +213,12 @@ function SocialAuth() {
             height="20"
           />
           <span className="sr-only">GitHub</span>
-        </button>
-        <button
-          type="button"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 text-white px-3 py-2 text-sm font-semibold ring-1 ring-white/15 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+        </a>
+        <a
+          href="/api/oauth/apple"
+          className={`inline-flex items-center justify-center gap-2 rounded-lg ${providers.apple ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-white/10 text-white/40 cursor-not-allowed'} px-3 py-2 text-sm font-semibold ring-1 ring-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
           aria-label="Continue with Apple"
-          disabled
+          onClick={(e)=>{ if(!providers.apple) e.preventDefault(); }}
         >
           <img
             src="https://cdn.simpleicons.org/apple/FFFFFF"
@@ -233,7 +229,7 @@ function SocialAuth() {
             height="20"
           />
           <span className="sr-only">Apple</span>
-        </button>
+        </a>
       </div>
     </div>
   );
