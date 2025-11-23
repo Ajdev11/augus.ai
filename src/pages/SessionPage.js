@@ -7,13 +7,13 @@ export default function SessionPage() {
   const [mode, setMode] = useState('signup'); // 'signup' | 'signin'
   const navigate = useNavigate();
 
-  async function handleSignup({ email, password, name }) {
+  async function handleSignup({ email, password }) {
     const res = await apiFetch('/auth/signup', {
       method: 'POST',
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password }),
     });
-    login(res.token);
-    navigate('/dashboard');
+    // After successful registration, direct user to Sign in
+    setMode('signin');
   }
   async function handleSignin({ email, password }) {
     const res = await apiFetch('/auth/signin', {
@@ -49,7 +49,7 @@ export default function SessionPage() {
 
         <div className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-sm p-6">
           {mode === 'signup' ? <SignupForm onSuccess={handleSignup} /> : <SigninForm onSuccess={handleSignin} />}
-          <SocialAuth onSuccess={() => handleSignin({ email: 'guest@augus.ai', password: 'guestpass' })} />
+          <SocialAuth />
           <div className="mt-6 text-center text-xs text-white/60">
             By continuing you agree to the Terms and Privacy Policy.
           </div>
@@ -77,13 +77,11 @@ function Input({ label, type = 'text', placeholder, value, onChange }) {
 function SignupForm({ onSuccess }) {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [name, setName] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   return (
     <form className="space-y-2">
       {error && <div className="text-xs text-red-400">{error}</div>}
-      <Input label="Name" placeholder="Ada Lovelace" value={name} onChange={(e)=>setName(e.target.value)} />
       <Input label="Email" type="email" placeholder="you@domain.com" value={email} onChange={(e)=>setEmail(e.target.value)} />
       <Input label="Password" type="password" placeholder="••••••••" value={password} onChange={(e)=>setPassword(e.target.value)} />
       <button
@@ -93,7 +91,7 @@ function SignupForm({ onSuccess }) {
         onClick={async()=>{
           try {
             setLoading(true); setError('');
-            await onSuccess({ email, password, name });
+            await onSuccess({ email, password });
           } catch(e){ setError(e.message); } finally { setLoading(false); }
         }}
       >
