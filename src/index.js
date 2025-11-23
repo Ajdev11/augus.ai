@@ -5,6 +5,7 @@ import App from './App';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import SessionPage from './pages/SessionPage';
 import SessionDashboard from './pages/SessionDashboard';
+import ProtectedRoute from './ProtectedRoute';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
@@ -13,7 +14,14 @@ root.render(
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/session" element={<SessionPage />} />
-        <Route path="/dashboard" element={<SessionDashboard />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <SessionDashboard />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </HashRouter>
   </React.StrictMode>

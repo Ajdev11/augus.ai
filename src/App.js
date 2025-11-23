@@ -103,7 +103,7 @@ function App() {
             </h1>
             <div className="mt-8 flex justify-center">
               <Link
-                to="/dashboard"
+                to="/session"
                 className="inline-flex items-center justify-center rounded-full bg-gray-900 text-white px-6 sm:px-8 py-3 text-sm sm:text-base font-semibold shadow-sm hover:bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-0"
               >
                 Go To Session

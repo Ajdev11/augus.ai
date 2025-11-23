@@ -1,9 +1,28 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { login } from '../auth';
+import { apiFetch } from '../api';
 
 export default function SessionPage() {
   const [mode, setMode] = useState('signup'); // 'signup' | 'signin'
   const navigate = useNavigate();
+
+  async function handleSignup({ email, password, name }) {
+    const res = await apiFetch('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    });
+    login(res.token);
+    navigate('/dashboard');
+  }
+  async function handleSignin({ email, password }) {
+    const res = await apiFetch('/auth/signin', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    login(res.token);
+    navigate('/dashboard');
+  }
 
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-6">
@@ -29,17 +48,8 @@ export default function SessionPage() {
         </div>
 
         <div className="rounded-2xl border border-white/15 bg-white/5 backdrop-blur-sm p-6">
-          {mode === 'signup' ? <SignupForm onSuccess={() => navigate('/dashboard')} /> : <SigninForm onSuccess={() => navigate('/dashboard')} />}
-          <SocialAuth />
-          <div className="mt-5">
-            <button
-              type="button"
-              onClick={() => navigate('/dashboard')}
-              className="w-full rounded-full bg-white/10 hover:bg-white/15 text-white font-semibold py-2.5 ring-1 ring-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-            >
-              Continue as guest (skip for now)
-            </button>
-          </div>
+          {mode === 'signup' ? <SignupForm onSuccess={handleSignup} /> : <SigninForm onSuccess={handleSignin} />}
+          <SocialAuth onSuccess={() => handleSignin({ email: 'guest@augus.ai', password: 'guestpass' })} />
           <div className="mt-6 text-center text-xs text-white/60">
             By continuing you agree to the Terms and Privacy Policy.
           </div>
@@ -49,13 +59,15 @@ export default function SessionPage() {
   );
 }
 
-function Input({ label, type = 'text', placeholder }) {
+function Input({ label, type = 'text', placeholder, value, onChange }) {
   return (
     <label className="block mb-4">
       <span className="block mb-2 text-sm font-medium text-white/90">{label}</span>
       <input
         type={type}
         placeholder={placeholder}
+        value={value}
+        onChange={onChange}
         className="w-full rounded-lg bg-black/40 border border-white/15 px-3 py-2 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30"
       />
     </label>
@@ -63,26 +75,44 @@ function Input({ label, type = 'text', placeholder }) {
 }
 
 function SignupForm({ onSuccess }) {
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [name, setName] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
   return (
     <form className="space-y-2">
-      <Input label="Email" type="email" placeholder="you@domain.com" />
-      <Input label="Password" type="password" placeholder="••••••••" />
+      {error && <div className="text-xs text-red-400">{error}</div>}
+      <Input label="Name" placeholder="Ada Lovelace" value={name} onChange={(e)=>setName(e.target.value)} />
+      <Input label="Email" type="email" placeholder="you@domain.com" value={email} onChange={(e)=>setEmail(e.target.value)} />
+      <Input label="Password" type="password" placeholder="••••••••" value={password} onChange={(e)=>setPassword(e.target.value)} />
       <button
         type="button"
-        className="mt-2 w-full rounded-full bg-gray-900 hover:bg-black text-white font-semibold py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-        onClick={onSuccess}
+        disabled={loading}
+        className="mt-2 w-full rounded-full bg-gray-900 hover:bg-black text-white font-semibold py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-50"
+        onClick={async()=>{
+          try {
+            setLoading(true); setError('');
+            await onSuccess({ email, password, name });
+          } catch(e){ setError(e.message); } finally { setLoading(false); }
+        }}
       >
-        Create account
+        {loading ? 'Creating…' : 'Create account'}
       </button>
     </form>
   );
 }
 
 function SigninForm({ onSuccess }) {
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
   return (
     <form className="space-y-2">
-      <Input label="Email" type="email" placeholder="you@domain.com" />
-      <Input label="Password" type="password" placeholder="••••••••" />
+      {error && <div className="text-xs text-red-400">{error}</div>}
+      <Input label="Email" type="email" placeholder="you@domain.com" value={email} onChange={(e)=>setEmail(e.target.value)} />
+      <Input label="Password" type="password" placeholder="••••••••" value={password} onChange={(e)=>setPassword(e.target.value)} />
       <div className="flex items-center justify-between text-sm text-white/70 mb-2">
         <label className="inline-flex items-center gap-2">
           <input type="checkbox" className="rounded bg-black/40 border-white/20" />
@@ -92,10 +122,16 @@ function SigninForm({ onSuccess }) {
       </div>
       <button
         type="button"
-        className="w-full rounded-full bg-gray-900 hover:bg-black text-white font-semibold py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-        onClick={onSuccess}
+        disabled={loading}
+        className="w-full rounded-full bg-gray-900 hover:bg-black text-white font-semibold py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-50"
+        onClick={async()=>{
+          try {
+            setLoading(true); setError('');
+            await onSuccess({ email, password });
+          } catch(e){ setError(e.message); } finally { setLoading(false); }
+        }}
       >
-        Sign in
+        {loading ? 'Signing in…' : 'Sign in'}
       </button>
     </form>
   );
@@ -117,6 +153,7 @@ function SocialAuth() {
           type="button"
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-white text-black px-3 py-2 text-sm font-semibold shadow-sm hover:bg-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           aria-label="Continue with Google"
+          disabled
         >
           <img
             src="https://cdn.simpleicons.org/google/000000"
@@ -132,6 +169,7 @@ function SocialAuth() {
           type="button"
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 text-white px-3 py-2 text-sm font-semibold ring-1 ring-white/15 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           aria-label="Continue with GitHub"
+          disabled
         >
           <img
             src="https://cdn.simpleicons.org/github/FFFFFF"
@@ -147,6 +185,7 @@ function SocialAuth() {
           type="button"
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-white/10 text-white px-3 py-2 text-sm font-semibold ring-1 ring-white/15 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           aria-label="Continue with Apple"
+          disabled
         >
           <img
             src="https://cdn.simpleicons.org/apple/FFFFFF"
