@@ -170,7 +170,6 @@ function ForgotForm({ onBack }) {
 }
 
 function SocialAuth() {
-  const providers = { google: true, github: true, apple: true }; // default links will work when configured
   const base = API_BASE || '';
   return (
     <div className="mt-7">
@@ -182,54 +181,19 @@ function SocialAuth() {
           <span className="bg-white/5 px-2 text-xs text-white/60">or continue with</span>
         </div>
       </div>
-      <div className="mt-5 grid grid-cols-3 gap-3">
+      <div className="mt-5 grid grid-cols-1 gap-3">
         <a
           href={`${base}/api/oauth/google`}
-          className={`inline-flex items-center justify-center gap-2 rounded-lg ${providers.google ? 'bg-white text-black hover:bg-white/90' : 'bg-white/20 text-white/50 cursor-not-allowed'} px-3 py-2 text-sm font-semibold shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
+          className="inline-flex items-center justify-center gap-3 rounded-lg bg-white text-black px-4 py-2.5 text-sm font-semibold shadow-sm hover:bg-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           aria-label="Continue with Google"
-          onClick={(e)=>{ if(!providers.google) e.preventDefault(); }}
         >
-          <img
-            src="https://cdn.simpleicons.org/google/000000"
-            alt=""
-            className="h-5 w-5"
-            loading="lazy"
-            width="20"
-            height="20"
-          />
-          <span className="sr-only">Google</span>
-        </a>
-        <a
-          href={`${base}/api/oauth/github`}
-          className={`inline-flex items-center justify-center gap-2 rounded-lg ${providers.github ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-white/10 text-white/40 cursor-not-allowed'} px-3 py-2 text-sm font-semibold ring-1 ring-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
-          aria-label="Continue with GitHub"
-          onClick={(e)=>{ if(!providers.github) e.preventDefault(); }}
-        >
-          <img
-            src="https://cdn.simpleicons.org/github/FFFFFF"
-            alt=""
-            className="h-5 w-5"
-            loading="lazy"
-            width="20"
-            height="20"
-          />
-          <span className="sr-only">GitHub</span>
-        </a>
-        <a
-          href={`${base}/api/oauth/apple`}
-          className={`inline-flex items-center justify-center gap-2 rounded-lg ${providers.apple ? 'bg-white/10 text-white hover:bg-white/15' : 'bg-white/10 text-white/40 cursor-not-allowed'} px-3 py-2 text-sm font-semibold ring-1 ring-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
-          aria-label="Continue with Apple"
-          onClick={(e)=>{ if(!providers.apple) e.preventDefault(); }}
-        >
-          <img
-            src="https://cdn.simpleicons.org/apple/FFFFFF"
-            alt=""
-            className="h-5 w-5"
-            loading="lazy"
-            width="20"
-            height="20"
-          />
-          <span className="sr-only">Apple</span>
+          <svg className="h-5 w-5" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.5 32.6 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.7 3l5.7-5.7C33.6 6.7 28.9 5 24 5 12.9 5 4 13.9 4 25s8.9 20 20 20 20-8.9 20-20c0-1.6-.2-3.1-.4-4.5z"/>
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3 0 5.7 1.1 7.7 3l5.7-5.7C33.6 6.7 28.9 5 24 5c-7.4 0-13.7 4.1-17.7 9.7z"/>
+            <path fill="#4CAF50" d="M24 45c5.2 0 9.6-1.7 12.8-4.7l-5.9-4.8c-2 1.4-4.6 2.3-6.9 2.3-5.2 0-9.5-3.4-11.1-8l-6.6 5.1C9.1 40.9 16.1 45 24 45z"/>
+            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.7 4.1-6.1 7-11.3 7-5.7 0-10.5-3.9-12.2-9.1l-6.6 5.1C8.3 39.6 15.6 45 24 45c9.5 0 17.5-6.6 19.6-15.5.4-1.6.6-3.2.6-5s-.2-3.4-.6-5z"/>
+          </svg>
+          <span>Google</span>
         </a>
       </div>
     </div>
