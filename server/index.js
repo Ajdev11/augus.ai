@@ -33,12 +33,19 @@ app.use(passport.session());
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/augus_ai';
 const PORT = process.env.PORT || 4000;
 
-mongoose
-  .connect(MONGODB_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.error('MongoDB error', err));
+async function start() {
+  try {
+    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 30000 });
+    console.log('MongoDB connected');
+    app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT}`));
+  } catch (err) {
+    console.error('MongoDB connection failed:', err.message);
+    console.error('If using Atlas, add your current IP in Network Access or allow 0.0.0.0/0 temporarily.');
+    process.exit(1);
+  }
+}
 
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, db: mongoose.connection.readyState }));
 app.use('/api/auth', authRoutes);
 app.use('/api/oauth', oauthRoutes);
 
@@ -47,6 +54,6 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.message || 'Server error' });
 });
 
-app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT}`));
+start();
 
 

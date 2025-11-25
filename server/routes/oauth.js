@@ -80,11 +80,33 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
         callbackURL: `${API_BASE}/api/oauth/github/callback`,
         scope: ['user:email'],
       },
-      async (_accessToken, _refreshToken, profile, done) => {
+      async (accessToken, _refreshToken, profile, done) => {
         try {
-          const email =
+          let email =
             (profile.emails && profile.emails.find((e) => e && e.value && e.verified)?.value) ||
-            (profile.emails && profile.emails[0] && profile.emails[0].value);
+            (profile.emails && profile.emails[0] && profile.emails[0].value) ||
+            (profile._json && profile._json.email);
+
+          // Some GitHub accounts hide email; fetch via API if missing
+          if (!email && typeof fetch !== 'undefined') {
+            const resp = await fetch('https://api.github.com/user/emails', {
+              headers: {
+                Authorization: `token ${accessToken}`,
+                'User-Agent': 'augus.ai',
+                Accept: 'application/vnd.github+json',
+              },
+            });
+            if (resp.ok) {
+              const emails = await resp.json();
+              const primary = Array.isArray(emails) && emails.find((e) => e.primary && e.verified);
+              const anyVerified = Array.isArray(emails) && emails.find((e) => e.verified);
+              email = (primary && primary.email) || (anyVerified && anyVerified.email) || (emails && emails[0] && emails[0].email);
+            }
+          }
+
+          if (!email) {
+            return done(new Error('GitHub did not return an email address'));
+          }
           const name = profile.displayName || profile.username || '';
           const user = await upsertUserFromProfile({ email, name, providerKey: 'githubId', providerId: profile.id });
           return done(null, user);
