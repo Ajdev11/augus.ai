@@ -153,10 +153,20 @@ function ForgotForm({ onBack }) {
           onClick={async()=>{
             try{
               setLoading(true); setError(''); setMessage('');
-              // Use GET by default for maximum compatibility
-              await apiFetch(`/auth/forgot?email=${encodeURIComponent(email)}`, { method: 'GET' });
+              const trimmed = String(email || '').trim();
+              // Basic email validation
+              if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+                throw new Error('Enter a valid email address');
+              }
+              // Try POST first
+              try {
+                await apiFetch('/auth/forgot', { method: 'POST', body: JSON.stringify({ email: trimmed }) });
+              } catch (e) {
+                // Fallback to GET (query) if POST fails (older proxies)
+                await apiFetch(`/auth/forgot?email=${encodeURIComponent(trimmed)}`, { method: 'GET' });
+              }
               setMessage('If the email exists, a reset link has been sent.');
-            }catch(e){ setError(e.message); } finally { setLoading(false); }
+            }catch(e){ setError(e.message || 'Could not send reset link'); } finally { setLoading(false); }
           }}
         >
           {loading ? 'Sending…' : 'Send reset link'}
@@ -164,6 +174,9 @@ function ForgotForm({ onBack }) {
         <button type="button" className="rounded-full ring-1 ring-white/15 px-4 py-2 text-sm hover:bg-white/5" onClick={onBack}>
           Back to sign in
         </button>
+      </div>
+      <div className="text-xs text-white/50">
+        Tip: Check your spam folder. If you still don’t receive an email, try again later.
       </div>
     </form>
   );
