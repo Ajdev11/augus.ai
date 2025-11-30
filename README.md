@@ -115,4 +115,4 @@ Behavior:
 ### Scripts
 - `npm run dev` API + React
 - `npm run server` API only
-- `npm start` React only
+- `npm start` React
