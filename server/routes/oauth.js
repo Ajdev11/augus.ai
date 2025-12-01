@@ -59,10 +59,10 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       }
     )
   );
-  router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'], prompt: 'select_account' }));
+  router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'], prompt: 'select_account', state: true }));
   router.get(
     '/google/callback',
-    passport.authenticate('google', { failureRedirect: `${FRONTEND}/#/session?error=google` }),
+    passport.authenticate('google', { failureRedirect: `${FRONTEND}/#/session?error=google`, state: true }),
     (req, res) => {
       const token = sign(req.user);
       res.redirect(`${FRONTEND}/#/oauth?token=${encodeURIComponent(token)}`);
@@ -116,10 +116,10 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
       }
     )
   );
-  router.get('/github', passport.authenticate('github', { scope: ['user:email'] }));
+  router.get('/github', passport.authenticate('github', { scope: ['user:email'], state: true }));
   router.get(
     '/github/callback',
-    passport.authenticate('github', { failureRedirect: `${FRONTEND}/#/session?error=github` }),
+    passport.authenticate('github', { failureRedirect: `${FRONTEND}/#/session?error=github`, state: true }),
     (req, res) => {
       const token = sign(req.user);
       res.redirect(`${FRONTEND}/#/oauth?token=${encodeURIComponent(token)}`);

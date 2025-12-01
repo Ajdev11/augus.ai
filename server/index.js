@@ -6,6 +6,9 @@ const dotenv = require('dotenv');
 const path = require('path');
 const session = require('express-session');
 const passport = require('passport');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const hpp = require('hpp');
 
 // Load env BEFORE requiring routes (so providers enable correctly)
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -14,8 +17,37 @@ const authRoutes = require('./routes/auth');
 const oauthRoutes = require('./routes/oauth');
 
 const app = express();
-app.use(cors({ origin: true, credentials: true }));
+
+// Trust proxy in production (for secure cookies behind reverse proxy)
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
+// Security headers
+app.use(helmet());
+
+// CORS allowlist
+const defaultOrigin = process.env.APP_BASE_URL || 'http://localhost:3000';
+const allowedOrigins = String(process.env.CORS_ORIGINS || defaultOrigin)
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // non-browser / curl
+      return cb(null, allowedOrigins.includes(origin));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: '2mb' }));
+
+// Prevent HTTP parameter pollution
+app.use(hpp());
+// Sanitize NoSQL operators from payloads
+app.use(mongoSanitize());
+
 app.use(morgan('dev'));
 app.options('*', cors());
 // Sessions for OAuth (dev memory store is fine)
@@ -24,7 +56,7 @@ app.use(
     secret: process.env.SESSION_SECRET || 'devsession',
     resave: false,
     saveUninitialized: false,
-    cookie: { sameSite: 'lax' },
+    cookie: { sameSite: 'lax', secure: process.env.NODE_ENV === 'production' },
   })
 );
 app.use(passport.initialize());
@@ -35,6 +67,9 @@ const PORT = process.env.PORT || 4000;
 
 async function start() {
   try {
+    if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 24) {
+      console.warn('[Security] JWT_SECRET is missing or too short. Set a long random value in server/.env.');
+    }
     await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 30000 });
     console.log('MongoDB connected');
     app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT}`));

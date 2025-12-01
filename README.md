@@ -37,6 +37,9 @@ FROM_EMAIL=no-reply@augus.ai
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 
+# CORS allowlist (comma-separated). Defaults to APP_BASE_URL if unset.
+CORS_ORIGINS=http://localhost:3000
+
 # GitHub / Apple OAuth (not shown in UI by default; optional)
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
@@ -51,6 +54,13 @@ Notes:
 npm run dev    # starts API (4000) + React (3000)
 ```
 Open `http://localhost:3000/#/`.
+
+### Security
+- HTTP hardening with Helmet, HPP (parameter pollution protection), and Mongo sanitize.
+- CORS allowlist via `CORS_ORIGINS` (comma-separated). Default allows only `APP_BASE_URL`.
+- Rate limits on auth endpoints (sign in / sign up / forgot / reset).
+- JWT secret warning if too short; set `JWT_SECRET` to a long random value.
+- Session cookie `secure` is enabled in production; set `NODE_ENV=production` in real deployments.
 
 ### Gmail SMTP (for “Forgot password” emails)
 Use an App Password (not your normal Gmail password).
@@ -88,6 +98,9 @@ Behavior:
 - User submits email on “Forgot password”.
 - If the user exists, a one-time token is created (hashed in DB) and an email is sent with `APP_BASE_URL/#/reset?token=...`. Tokens expire in 1 hour and are invalidated after use.
 - The API always returns `{ ok: true }` to avoid revealing whether the email is registered.
+
+### OAuth security
+- Google/GitHub flows include the `state` parameter for CSRF protection (requires sessions, already configured).
 
 ### Troubleshooting
 - Failed to fetch (frontend)
