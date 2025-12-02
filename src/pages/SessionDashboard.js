@@ -48,7 +48,7 @@ export default function SessionDashboard() {
   const [qIndex, setQIndex] = useState(0);
   const [awaitingAnswer, setAwaitingAnswer] = useState(false);
   const intervalRef = useRef(null);
-  const SESSION_LIMIT_SECONDS = 15 * 60; // 15 minutes
+  const SESSION_LIMIT_SECONDS = 10 * 60; // 10 minutes
   // Voice input (SpeechRecognition)
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);

@@ -29,7 +29,7 @@ export default function SessionPage() {
       body: JSON.stringify({ email, password }),
     });
     login(res.token);
-    navigate('/dashboard');
+    navigate('/dashboard', { replace: true });
   }
 
   return (
