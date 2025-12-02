@@ -601,10 +601,10 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
             </div>
           </div>
         )}
-        {/* Document upload (vertical, pinned to viewport right like header) */}
-        <div className="absolute right-6 sm:right-10 top-24 w-64">
-          <div className="flex flex-col items-end gap-2 sm:gap-3 text-right">
-              <label className="w-full inline-flex items-center justify-center rounded-full bg-gray-900 hover:bg-black text-white font-semibold px-4 py-2 cursor-pointer">
+        {/* Document upload (stacked on mobile; pinned on larger screens) */}
+        <div className="w-full sm:w-64 sm:absolute right-6 sm:right-10 top-24 sm:top-24 mt-4 sm:mt-0">
+          <div className="flex flex-col items-stretch sm:items-end gap-2 sm:gap-3 text-left sm:text-right">
+              <label className="w-full inline-flex items-center justify-center rounded-full bg-gray-900 hover:bg-black text-white font-semibold px-4 py-2 cursor-pointer text-sm sm:text-base">
                 <input
                   type="file"
                   accept="application/pdf"
@@ -619,10 +619,10 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                 />
                 Upload PDF
               </label>
-              <div className="text-sm text-white/70 w-full break-words">
+              <div className="text-xs sm:text-sm text-white/70 w-full break-words">
                 {loadingDoc ? 'Processing PDF…' : docName ? `Loaded: ${docName}` : 'No document loaded'}
               </div>
-              <div className="mt-2 text-xs text-white/60 w-full">
+              <div className="mt-1 sm:mt-2 text-xs text-white/60 w-full">
                 {docText ? `${Math.min(docText.length, 99999)} chars extracted` : ''}
               </div>
           </div>
@@ -630,23 +630,23 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
 
         <div className="max-w-5xl mx-auto flex flex-col items-center relative">
           {/* Big mic orb */}
-          <div className="relative mt-10 sm:mt-14">
-            <div className="size-[320px] sm:size-[380px] rounded-full bg-gradient-to-b from-[#dff2ff] to-[#cfe9ff] shadow-[0_30px_120px_rgba(59,130,246,0.3)] ring-8 ring-[#eaf5ff] flex items-end justify-center overflow-hidden">
+          <div className="relative mt-8 sm:mt-14">
+            <div className="size-[240px] sm:size-[380px] rounded-full bg-gradient-to-b from-[#dff2ff] to-[#cfe9ff] shadow-[0_30px_120px_rgba(59,130,246,0.3)] ring-8 ring-[#eaf5ff] flex items-end justify-center overflow-hidden">
               <div className="w-full h-1/2 bg-gradient-to-t from-[#c7bfff] to-[#c9f0ff]" />
             </div>
             <button
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 size-16 sm:size-20 rounded-full bg-white shadow-lg ring-1 ring-black/5 flex items-center justify-center"
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 size-12 sm:size-20 rounded-full bg-white shadow-lg ring-1 ring-black/5 flex items-center justify-center"
               aria-label="Microphone"
             >
               {/* mic icon */}
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-sky-500" viewBox="0 0 24 24" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-7 sm:w-7 text-sky-500" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V20H8v2h8v-2h-3v-2.07A7 7 0 0 0 19 11h-2Z" />
               </svg>
             </button>
           </div>
 
           {/* Controls */}
-          <div className="mt-10 flex items-center gap-4">
+          <div className="mt-6 sm:mt-10 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
             {!expired ? (
               <button
                 onClick={async () => {
@@ -668,14 +668,14 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                     stopListening();
                   }
                 }}
-                className="rounded-full bg-emerald-400/90 hover:bg-emerald-400 text-white font-semibold px-6 sm:px-8 py-3 shadow disabled:opacity-50"
+                className="rounded-full bg-emerald-400/90 hover:bg-emerald-400 text-white font-semibold px-5 sm:px-8 py-2.5 sm:py-3 shadow disabled:opacity-50 text-sm sm:text-base"
               >
                 {running ? 'Pause Session' : 'Start Session'}
               </button>
             ) : (
               <button
                 onClick={resetSession}
-                className="rounded-full bg-gray-900 hover:bg-black text-white font-semibold px-6 sm:px-8 py-3 shadow"
+                className="rounded-full bg-gray-900 hover:bg-black text-white font-semibold px-5 sm:px-8 py-2.5 sm:py-3 shadow text-sm sm:text-base"
               >
                 Reset Session
               </button>
@@ -683,24 +683,24 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
 
             <button
               onClick={() => setIsMuted((v) => !v)}
-              className={`rounded-full px-4 py-3 ring-1 ring-black/10 shadow ${isMuted ? 'bg-rose-50 text-rose-600' : 'bg-white text-[#0b2545]'}`}
+              className={`rounded-full px-3 sm:px-4 py-2.5 sm:py-3 ring-1 ring-black/10 shadow text-sm sm:text-base ${isMuted ? 'bg-rose-50 text-rose-600' : 'bg-white text-[#0b2545]'}`}
               aria-pressed={isMuted}
             >
               {isMuted ? (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19 11a7 7 0 0 1-7 7v-2a5 5 0 0 0 5-5h2Zm-7-9a3 3 0 0 1 3 3v5.59l-6.3-6.3A3 3 0 0 1 12 2Zm-7.3.3 16 16-1.4 1.4-3.1-3.1a6.96 6.96 0 0 1-4.2 1.4v2H8v-2.07A6.99 6.99 0 0 1 5 11h2a5 5 0 0 0 5 5c.93 0 1.8-.26 2.55-.71l-1.55-1.55V10.4L5.7 3.7 4.6 2.3Z" />
                 </svg>
               ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V20H8v2h8v-2h-3v-2.07A7 7 0 0 0 19 11h-2Z" />
                 </svg>
               )}
             </button>
 
-            <div className="text-3xl font-extrabold tabular-nums tracking-wider text-white">
+            <div className="text-xl sm:text-3xl font-extrabold tabular-nums tracking-wider text-white">
               {hh}:{mm}:{ss}
             </div>
-            <div className="flex items-center gap-2 text-sm text-white/60">
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-white/60">
               {expired ? 'Time limit reached' : `Remaining ${rmm}:${rss}`}
               <div className="flex items-center gap-1">
                 <span className="hidden sm:inline">Vol</span>
@@ -711,7 +711,7 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                   step="0.1"
                   value={ttsVolume}
                   onChange={(e) => setTtsVolume(parseFloat(e.target.value))}
-                  className="w-20 accent-white"
+                  className="w-16 sm:w-20 accent-white"
                   aria-label="Voice volume"
                 />
               </div>
@@ -721,7 +721,7 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
           {/* Chat panel */}
           <div className="mt-10 w-full max-w-3xl">
             <div className="rounded-2xl border border-black/10 bg-white shadow-sm p-4">
-              <div className="space-y-3 max-h-[320px] overflow-y-auto">
+              <div className="space-y-3 max-h-[50vh] sm:max-h-[320px] overflow-y-auto">
                 {messages.map((m, i) => (
                   <div key={i} className={`${m.role === 'user' ? 'text-right' : 'text-left'}`}>
                     <div
@@ -735,19 +735,19 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                 ))}
               </div>
               {awaitingAnswer ? (
-                <div className="mt-4 flex items-center gap-3 text-sm">
+                <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3 text-sm">
                   <span className={`inline-block h-2 w-2 rounded-full ${listening ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
                   <span className="text-[#0b2545]">{listening ? 'Listening for your answer…' : 'Mic paused'}</span>
-                  <button onClick={startListening} className="rounded-lg bg-gray-900 hover:bg-black text-white px-3 py-1 font-semibold">
+                  <button onClick={startListening} className="rounded-lg bg-gray-900 hover:bg-black text-white px-3 py-1 font-semibold text-xs sm:text-sm">
                     Listen
                   </button>
-                  <button onClick={stopListening} className="rounded-lg bg-slate-200 hover:bg-slate-300 text-[#0b2545] px-3 py-1 font-semibold">
+                  <button onClick={stopListening} className="rounded-lg bg-slate-200 hover:bg-slate-300 text-[#0b2545] px-3 py-1 font-semibold text-xs sm:text-sm">
                     Stop
                   </button>
                   <span className="text-xs text-[#0b2545]/70 ml-1">Say “hint” or “skip” anytime.</span>
                 </div>
               ) : (
-                <div className="mt-4 flex items-center gap-2">
+                <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <input
                     value={userInput}
                     onChange={(e) => setUserInput(e.target.value)}
@@ -757,7 +757,7 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                   />
                   <button
                     onClick={() => ask(userInput)}
-                    className="rounded-lg bg-gray-900 hover:bg-black text-white px-4 py-2 font-semibold disabled:opacity-50"
+                    className="rounded-lg bg-gray-900 hover:bg-black text-white px-4 py-2 font-semibold disabled:opacity-50 w-full sm:w-auto"
                     disabled={expired}
                   >
                     Send
@@ -787,7 +787,7 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
           </div>
 
           {/* Help row */}
-          <div className="mt-6 text-sm text-white/70 flex items-center gap-2">
+          <div className="mt-6 text-xs sm:text-sm text-white/70 flex flex-wrap items-center justify-center gap-2 px-4 text-center">
             <span className="inline-flex size-5 items-center justify-center rounded bg-emerald-100 text-emerald-600">✓</span>
             <span>Having Trouble? Please contact</span>
             <a href="mailto:support@augus.ai" className="font-semibold underline underline-offset-2">
