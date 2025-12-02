@@ -1,11 +1,19 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login } from '../auth';
+import { login, isAuthenticated } from '../auth';
 import { apiFetch, API_BASE } from '../api';
 
 export default function SessionPage() {
   const [mode, setMode] = useState('signup'); // 'signup' | 'signin' | 'forgot'
   const navigate = useNavigate();
+
+  // If already authenticated, redirect away from auth page
+  React.useEffect(() => {
+    if (isAuthenticated()) {
+      navigate('/dashboard', { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSignup({ email, password }) {
     const res = await apiFetch('/auth/signup', {

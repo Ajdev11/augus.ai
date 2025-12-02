@@ -72,6 +72,19 @@ export default function SessionDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Prevent navigating back/forward while signed in dashboard
+  useEffect(() => {
+    // Only apply on dashboard route
+    const block = () => {
+      // Always force stay on dashboard when user tries to go back/forward
+      navigate('/dashboard', { replace: true });
+    };
+    window.addEventListener('popstate', block);
+    // Push a state so that immediate back triggers popstate
+    try { window.history.pushState(null, '', window.location.href); } catch {}
+    return () => window.removeEventListener('popstate', block);
+  }, [navigate]);
+
   useEffect(() => {
     if (running) {
       intervalRef.current = setInterval(() => setElapsed((t) => t + 1), 1000);
