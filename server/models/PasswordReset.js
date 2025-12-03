@@ -10,6 +10,9 @@ const PasswordResetSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Automatically purge expired reset records
+PasswordResetSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
 module.exports = mongoose.model('PasswordReset', PasswordResetSchema);
 
 

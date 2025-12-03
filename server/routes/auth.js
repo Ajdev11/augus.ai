@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const auth = require('../middleware/auth');
 const rateLimit = require('express-rate-limit');
+const { z } = require('zod');
 
 const router = express.Router();
 
@@ -27,6 +28,24 @@ function isValidPassword(value) {
   const pwd = String(value || '');
   return pwd.length >= 8 && pwd.length <= 200;
 }
+
+// Zod schemas for input validation
+const signupSchema = z.object({
+  email: z.string().email().max(254),
+  password: z.string().min(8).max(200),
+  name: z.string().max(120).optional(),
+});
+const signinSchema = z.object({
+  email: z.string().email().max(254),
+  password: z.string().min(1).max(200),
+});
+const emailOnlySchema = z.object({
+  email: z.string().email().max(254),
+});
+const resetSchema = z.object({
+  token: z.string().min(10),
+  password: z.string().min(8).max(200),
+});
 
 // Rate limiters for auth endpoints (IP-based)
 const signinLimiter = rateLimit({
@@ -60,11 +79,10 @@ const resetLimiter = rateLimit({
 
 router.post('/signup', async (req, res, next) => {
   try {
-    const { email: rawEmail, password, name } = req.body;
+    const parsed = signupSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid email or password (min 8 chars)' });
+    const { email: rawEmail, password, name } = parsed.data;
     const email = normalizeEmail(rawEmail);
-    if (!isValidEmail(email) || !isValidPassword(password)) {
-      return res.status(400).json({ error: 'Invalid email or password (min 8 chars)' });
-    }
     const exists = await User.findOne({ email });
     if (exists) return res.status(409).json({ error: 'Email already registered' });
     const passwordHash = await bcrypt.hash(password, 10);
@@ -78,11 +96,10 @@ router.post('/signup', async (req, res, next) => {
 
 router.post('/signin', signinLimiter, async (req, res, next) => {
   try {
-    const { email: rawEmail, password } = req.body;
+    const parsed = signinSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ error: 'Email and password required' });
+    const { email: rawEmail, password } = parsed.data;
     const email = normalizeEmail(rawEmail);
-    if (!isValidEmail(email) || typeof password !== 'string' || password.length === 0) {
-      return res.status(400).json({ error: 'Email and password required' });
-    }
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const ok = await bcrypt.compare(password, user.passwordHash);
@@ -159,9 +176,10 @@ async function sendResetEmail(email, resetUrl) {
 // Request password reset - sends email if user exists
 router.post('/forgot', forgotLimiter, async (req, res, next) => {
   try {
-    const { email: rawEmail } = req.body || {};
+    const parsed = emailOnlySchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ error: 'Email is required' });
+    const { email: rawEmail } = parsed.data;
     const email = normalizeEmail(rawEmail);
-    if (!isValidEmail(email)) return res.status(400).json({ error: 'Email is required' });
     const user = await User.findOne({ email });
     if (!user) return res.json({ ok: true });
     // Invalidate previous tokens for this user
@@ -182,8 +200,9 @@ router.post('/forgot', forgotLimiter, async (req, res, next) => {
 // GET fallback for environments having JSON body parsing issues (dev only) - same behavior
 router.get('/forgot', forgotLimiter, async (req, res, next) => {
   try {
-    const email = normalizeEmail(req.query.email);
-    if (!isValidEmail(email)) return res.status(400).json({ error: 'Email is required' });
+    const parsed = emailOnlySchema.safeParse({ email: req.query.email });
+    if (!parsed.success) return res.status(400).json({ error: 'Email is required' });
+    const email = normalizeEmail(parsed.data.email);
     const user = await User.findOne({ email });
     if (!user) return res.json({ ok: true });
     await PasswordReset.deleteMany({ userId: user._id, usedAt: { $exists: false } });
@@ -202,8 +221,9 @@ router.get('/forgot', forgotLimiter, async (req, res, next) => {
 
 router.post('/reset', resetLimiter, async (req, res, next) => {
   try {
-    const { token, password } = req.body || {};
-    if (!token || !isValidPassword(password)) return res.status(400).json({ error: 'Token and valid password (min 8 chars) required' });
+    const parsed = resetSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ error: 'Token and valid password (min 8 chars) required' });
+    const { token, password } = parsed.data;
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const pr = await PasswordReset.findOne({ tokenHash, usedAt: { $exists: false } });
     if (!pr) return res.status(400).json({ error: 'Invalid token' });
