@@ -8,6 +8,7 @@ export function login(token) {
 
 export function logout() {
   localStorage.removeItem('augus_token');
+  localStorage.removeItem('augus_remember');
 }
 
 

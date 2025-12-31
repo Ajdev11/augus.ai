@@ -99,7 +99,7 @@ function App() {
           {/* Heading */}
           <div className="relative z-10 px-6">
             <h1 className="text-center text-3xl sm:text-6xl font-extrabold tracking-tight leading-tight">
-              Interact wit Augus.AI
+              Interact with Augus.AI
             </h1>
             <div className="mt-8 flex justify-center">
               <Link

@@ -29,11 +29,14 @@ export default function SessionDashboard() {
   const [docName, setDocName] = useState('');
   const [docText, setDocText] = useState('');
   const [loadingDoc, setLoadingDoc] = useState(false);
+  const [docError, setDocError] = useState('');
   const [messages, setMessages] = useState([
     { role: 'assistant', content: 'Upload a PDF and click Start Session to begin. Ask me anything about your document.' },
   ]);
   const [userInput, setUserInput] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('OPENAI_API_KEY') || '');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [micStatusMsg, setMicStatusMsg] = useState('');
   const [ttsVolume, setTtsVolume] = useState(() => {
     const v = localStorage.getItem('TTS_VOLUME');
     const n = v !== null ? parseFloat(v) : 0.8;
@@ -48,6 +51,7 @@ export default function SessionDashboard() {
   const [qIndex, setQIndex] = useState(0);
   const [awaitingAnswer, setAwaitingAnswer] = useState(false);
   const intervalRef = useRef(null);
+  const messagesEndRef = useRef(null);
   const SESSION_LIMIT_SECONDS = 10 * 60; // 10 minutes
   // Voice input (SpeechRecognition)
   const [listening, setListening] = useState(false);
@@ -74,15 +78,26 @@ export default function SessionDashboard() {
 
   // Prevent navigating back/forward while signed in dashboard
   useEffect(() => {
-    // Only apply on dashboard route
-    const block = () => {
-      // Always force stay on dashboard when user tries to go back/forward
-      navigate('/dashboard', { replace: true });
+    // Softer back behavior: first back shows a transient toast, second back signs out
+    let warned = false;
+    const onPop = (e) => {
+      e.preventDefault();
+      if (!warned) {
+        warned = true;
+        setMicStatusMsg('Press back again to sign out and leave the dashboard.');
+        // push state back to stay on page
+        window.history.pushState(null, '', window.location.href);
+        // auto-clear warning after a few seconds
+        setTimeout(() => { setMicStatusMsg(''); warned = false; }, 3500);
+        return;
+      }
+      // second back confirms logout
+      doLogout();
+      navigate('/', { replace: true });
     };
-    window.addEventListener('popstate', block);
-    // Push a state so that immediate back triggers popstate
+    window.addEventListener('popstate', onPop);
     try { window.history.pushState(null, '', window.location.href); } catch {}
-    return () => window.removeEventListener('popstate', block);
+    return () => window.removeEventListener('popstate', onPop);
   }, [navigate]);
 
   useEffect(() => {
@@ -96,6 +111,11 @@ export default function SessionDashboard() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [running]);
+
+  // Auto-scroll chat as new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   // Stop session automatically when time limit is reached
   useEffect(() => {
@@ -170,6 +190,7 @@ export default function SessionDashboard() {
     rec.onstart = () => {
       setListening(true);
       setLiveTranscript('');
+      setMicStatusMsg('Listening…');
       lastResultTsRef.current = Date.now();
       // Fallback timer: if we never get a result, still finalize after 10s
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -184,6 +205,7 @@ export default function SessionDashboard() {
       const text = result?.[0]?.transcript;
       if (text) setLiveTranscript((prev) => (prev ? `${prev} ${text}` : text));
       lastResultTsRef.current = Date.now();
+      setMicStatusMsg('Capturing speech…');
       // (Re)start a 10s silence timer
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = setTimeout(() => {
@@ -192,6 +214,7 @@ export default function SessionDashboard() {
     };
     rec.onend = () => {
       setListening(false);
+      setMicStatusMsg('Mic paused');
       // Always finalize what we have on end; if empty and awaiting, skip
       if (awaitingAnswer && running && !expired) {
         finalizeVoiceAnswer();
@@ -206,6 +229,13 @@ export default function SessionDashboard() {
     };
     rec.onerror = (e) => {
       setListening(false);
+      if (e?.error === 'not-allowed') {
+        setMicStatusMsg('Microphone permission denied');
+      } else if (e?.error === 'no-speech') {
+        setMicStatusMsg('No speech detected');
+      } else {
+        setMicStatusMsg('Microphone error');
+      }
       if (awaitingAnswer && running && !expired) {
         // Fall back to skip on mic errors after a short moment
         setTimeout(() => finalizeVoiceAnswer(), 500);
@@ -229,6 +259,7 @@ export default function SessionDashboard() {
     try {
       rec.start();
       setListening(true);
+      setMicStatusMsg('Listening…');
     } catch {}
   }
   function stopListening() {
@@ -237,6 +268,7 @@ export default function SessionDashboard() {
     try {
       rec.stop();
       setListening(false);
+      setMicStatusMsg('Mic paused');
     } catch {}
   }
 
@@ -281,9 +313,14 @@ export default function SessionDashboard() {
   }, [running, expired, docText, awaitingAnswer, lastActivityTs]);
   async function extractPdfText(file) {
     setLoadingDoc(true);
+    setDocError('');
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      if (pdf.numPages > 80) {
+        setDocError('PDF has too many pages (max 80). Please upload a smaller document.');
+        return '';
+      }
       let text = '';
       for (let p = 1; p <= pdf.numPages; p++) {
         const page = await pdf.getPage(p);
@@ -292,6 +329,9 @@ export default function SessionDashboard() {
         text += strings.join(' ') + '\n';
       }
       return text.replace(/\s+/g, ' ').trim();
+    } catch (e) {
+      setDocError('Unable to read PDF. Please try another file.');
+      return '';
     } finally {
       setLoadingDoc(false);
     }
@@ -546,6 +586,11 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
     setMessages([
       { role: 'assistant', content: 'Session reset. Upload a PDF and click Start Session to begin.' },
     ]);
+    setQuiz([]);
+    setQIndex(0);
+    setAwaitingAnswer(false);
+    stopListening();
+    setLiveTranscript('');
   }
 
   return (
@@ -612,6 +657,15 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    setDocError('');
+                    if (!file.type.includes('pdf')) {
+                      setDocError('Please upload a PDF file.');
+                      return;
+                    }
+                    if (file.size > 12 * 1024 * 1024) {
+                      setDocError('PDF too large (max 12MB).');
+                      return;
+                    }
                     setDocName(file.name);
                     const text = await extractPdfText(file);
                     setDocText(text);
@@ -625,17 +679,26 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
               <div className="mt-1 sm:mt-2 text-xs text-white/60 w-full">
                 {docText ? `${Math.min(docText.length, 99999)} chars extracted` : ''}
               </div>
+              {docError && <div className="text-xs text-rose-300 w-full">{docError}</div>}
           </div>
         </div>
 
         <div className="max-w-5xl mx-auto flex flex-col items-center relative">
           {/* Big mic orb */}
           <div className="relative mt-8 sm:mt-14">
-            <div className="size-[240px] sm:size-[380px] rounded-full bg-gradient-to-b from-[#dff2ff] to-[#cfe9ff] shadow-[0_30px_120px_rgba(59,130,246,0.3)] ring-8 ring-[#eaf5ff] flex items-end justify-center overflow-hidden">
+            <div className={`size-[240px] sm:size-[380px] rounded-full bg-gradient-to-b from-[#dff2ff] to-[#cfe9ff] shadow-[0_30px_120px_rgba(59,130,246,0.3)] ring-8 ${listening ? 'ring-emerald-300' : 'ring-[#eaf5ff]'} flex items-end justify-center overflow-hidden transition-all`}>
               <div className="w-full h-1/2 bg-gradient-to-t from-[#c7bfff] to-[#c9f0ff]" />
             </div>
             <button
               className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 size-12 sm:size-20 rounded-full bg-white shadow-lg ring-1 ring-black/5 flex items-center justify-center"
+            onClick={() => {
+              if (expired) return;
+              if (listening) {
+                stopListening();
+              } else {
+                startListening();
+              }
+            }}
               aria-label="Microphone"
             >
               {/* mic icon */}
@@ -681,6 +744,12 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
               </button>
             )}
 
+            {quiz.length > 0 && (
+              <span className="rounded-full bg-white/10 text-white px-3 py-2 text-xs sm:text-sm ring-1 ring-white/15">
+                Question {Math.min(qIndex + 1, quiz.length)} of {quiz.length}
+              </span>
+            )}
+
             <button
               onClick={() => setIsMuted((v) => !v)}
               className={`rounded-full px-3 sm:px-4 py-2.5 sm:py-3 ring-1 ring-black/10 shadow text-sm sm:text-base ${isMuted ? 'bg-rose-50 text-rose-600' : 'bg-white text-[#0b2545]'}`}
@@ -718,6 +787,18 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
             </div>
           </div>
 
+          {micStatusMsg && (
+            <div className="mt-2 text-xs text-white/70">
+              {micStatusMsg}
+            </div>
+          )}
+
+          {expired && (
+            <div className="mt-3 text-sm text-amber-300">
+              Session ended. Reset to start a new session.
+            </div>
+          )}
+
           {/* Chat panel */}
           <div className="mt-10 w-full max-w-3xl">
             <div className="rounded-2xl border border-black/10 bg-white shadow-sm p-4">
@@ -733,6 +814,7 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} />
               </div>
               {awaitingAnswer ? (
                 <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3 text-sm">
@@ -745,6 +827,14 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                     Stop
                   </button>
                   <span className="text-xs text-[#0b2545]/70 ml-1">Say “hint” or “skip” anytime.</span>
+                  {quiz.length > 0 && (
+                    <button
+                      onClick={resetSession}
+                      className="rounded-lg bg-white/70 hover:bg-white text-[#0b2545] px-3 py-1 font-semibold text-xs sm:text-sm"
+                    >
+                      Reset quiz
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -774,6 +864,7 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
               )}
               <div className="mt-3 flex items-center gap-2">
                 <input
+                  type={showApiKey ? 'text' : 'password'}
                   value={apiKey}
                   onChange={(e) => {
                     setApiKey(e.target.value);
@@ -782,6 +873,26 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                   placeholder="Optional: OpenAI API Key for better answers"
                   className="flex-1 rounded-lg border border-black/10 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-black/20"
                 />
+                <button
+                  type="button"
+                  className="rounded-lg bg-white text-[#0b2545] px-2 py-2 text-xs font-semibold ring-1 ring-black/10"
+                  onClick={() => setShowApiKey((v) => !v)}
+                >
+                  {showApiKey ? 'Hide' : 'Show'}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-slate-100 text-[#0b2545] px-2 py-2 text-xs font-semibold ring-1 ring-black/10"
+                  onClick={() => {
+                    setApiKey('');
+                    localStorage.removeItem('OPENAI_API_KEY');
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="mt-1 text-[11px] text-[#0b2545]/70">
+                Stored locally in your browser only.
               </div>
             </div>
           </div>
