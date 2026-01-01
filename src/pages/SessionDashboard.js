@@ -34,8 +34,6 @@ export default function SessionDashboard() {
     { role: 'assistant', content: 'Upload a PDF and click Start Session to begin. Ask me anything about your document.' },
   ]);
   const [userInput, setUserInput] = useState('');
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('OPENAI_API_KEY') || '');
-  const [showApiKey, setShowApiKey] = useState(false);
   const [micStatusMsg, setMicStatusMsg] = useState('');
   const [ttsVolume, setTtsVolume] = useState(() => {
     const v = localStorage.getItem('TTS_VOLUME');
@@ -371,7 +369,7 @@ export default function SessionDashboard() {
       }
     }
     const snippet = best.length > 800 ? best.slice(0, 800) + '…' : best;
-    return `From your document, here is the most relevant part:\n\n"${snippet}"\n\nSummary: The passage above is likely related to your question. If you need deeper reasoning, provide an OpenAI API key to enable richer answers.`;
+    return `From your document, here is the most relevant part:\n\n"${snippet}"\n\nSummary: The passage above is likely related to your question. If you need deeper reasoning, ensure the server-side AI is configured.`;
   }
 
   function extractKeywordsLocal(text, k = 6) {
@@ -398,39 +396,22 @@ export default function SessionDashboard() {
     }
     pushAssistant('Generating a few questions from your document…');
 
-    // Try API for better questions, else fall back to local heuristic.
-    if (apiKey) {
-      try {
-        const context = docText.length > 12000 ? docText.slice(0, 12000) : docText;
-        const prompt = `You are an expert tutor. From the document below, produce 5 progressively deeper, open-ended questions.
-For each item include 2-5 key concepts you expect in a strong answer.
-Return strict JSON:\n{"questions":[{"q":"...", "keywords":["k1","k2","k3"]}, ...]}\nDocument:\n${context}`;
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.4,
-          }),
-        });
-        const data = await res.json();
-        const raw = data?.choices?.[0]?.message?.content || '';
-        let parsed;
-        try { parsed = JSON.parse(raw); } catch { /* fall through */ }
-        if (parsed?.questions?.length) {
-          setQuiz(parsed.questions.slice(0,5));
-          setQIndex(0);
-          setAwaitingAnswer(true);
-          pushAssistant(`Question 1: ${parsed.questions[0].q}`);
-          return;
-        }
-      } catch (e) {
-        // ignore; fallback to local
+    // Try backend Gemini for better questions, else fall back to local heuristic.
+    try {
+      const res = await apiFetch('/ai/quiz', {
+        method: 'POST',
+        body: JSON.stringify({ docText }),
+      });
+      if (res?.questions?.length) {
+        setQuiz(res.questions.slice(0, 5));
+        setQIndex(0);
+        setAwaitingAnswer(true);
+        pushAssistant(`Question 1: ${res.questions[0].q}`);
+        startListening();
+        return;
       }
+    } catch (e) {
+      // fallback to local below
     }
 
     // Local fallback: pick frequent keywords and form questions.
@@ -491,35 +472,20 @@ Return strict JSON:\n{"questions":[{"q":"...", "keywords":["k1","k2","k3"]}, ...
 
       setMessages((m) => [...m, { role: 'user', content: question }]);
       let feedback = '';
-      if (apiKey) {
-        try {
-          const current = quiz[qIndex];
-          const evalPrompt = `You are an expert tutor. Evaluate the student's answer concisely with depth.
-Question: ${current.q}
-Expected key concepts: ${(current.keywords || []).join(', ')}
-Student answer: ${question}
-Use ONLY the provided document context. Provide at most 4 short bullet points:
-- Correctness and coverage of key ideas
-- Missing or incorrect points
-- One improvement suggestion
-- 1 short reinforcing tip or next step`;
-          const res = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: [{ role: 'user', content: evalPrompt }],
-              temperature: 0.2,
-            }),
-          });
-          const data = await res.json();
-          feedback = data?.choices?.[0]?.message?.content || '';
-        } catch {
-          // fallback
-        }
+      try {
+        const current = quiz[qIndex];
+        const resp = await apiFetch('/ai/eval', {
+          method: 'POST',
+          body: JSON.stringify({
+            docText,
+            question: current.q,
+            answer: question,
+            keywords: current.keywords || [],
+          }),
+        });
+        feedback = resp?.feedback || '';
+      } catch {
+        // fallback below
       }
       if (!feedback) {
         const { score, hits } = evaluateLocally(question, quiz[qIndex].keywords);
@@ -549,32 +515,17 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
     setUserInput('');
     let answer = '';
     try {
-      if (apiKey && docText) {
-        const system = 'You are a helpful tutor. Use only the provided document to answer. Cite short quotes where helpful.';
-        const context = docText.length > 16000 ? docText.slice(0, 16000) : docText;
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      if (docText) {
+        const resp = await apiFetch('/ai/answer', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: system },
-              { role: 'user', content: `Document:\n${context}` },
-              { role: 'user', content: `Question: ${question}` },
-            ],
-            temperature: 0.3,
-          }),
+          body: JSON.stringify({ docText, question }),
         });
-        const data = await res.json();
-        answer = data?.choices?.[0]?.message?.content || 'No answer.';
+        answer = resp?.answer || '';
       } else {
         answer = localAnswer(question, docText || '');
       }
     } catch (e) {
-      answer = 'Unable to generate an answer right now.';
+      answer = localAnswer(question, docText || '');
     }
     setMessages((m) => [...m, { role: 'assistant', content: answer }]);
   }
@@ -862,37 +813,8 @@ Use ONLY the provided document context. Provide at most 4 short bullet points:
                   </div>
                 </div>
               )}
-              <div className="mt-3 flex items-center gap-2">
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  value={apiKey}
-                  onChange={(e) => {
-                    setApiKey(e.target.value);
-                    localStorage.setItem('OPENAI_API_KEY', e.target.value);
-                  }}
-                  placeholder="Optional: OpenAI API Key for better answers"
-                  className="flex-1 rounded-lg border border-black/10 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-black/20"
-                />
-                <button
-                  type="button"
-                  className="rounded-lg bg-white text-[#0b2545] px-2 py-2 text-xs font-semibold ring-1 ring-black/10"
-                  onClick={() => setShowApiKey((v) => !v)}
-                >
-                  {showApiKey ? 'Hide' : 'Show'}
-                </button>
-                <button
-                  type="button"
-                  className="rounded-lg bg-slate-100 text-[#0b2545] px-2 py-2 text-xs font-semibold ring-1 ring-black/10"
-                  onClick={() => {
-                    setApiKey('');
-                    localStorage.removeItem('OPENAI_API_KEY');
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-              <div className="mt-1 text-[11px] text-[#0b2545]/70">
-                Stored locally in your browser only.
+              <div className="mt-2 text-xs text-[#0b2545]/80">
+                AI is served from the backend (Gemini). No API key entry needed on this page.
               </div>
             </div>
           </div>

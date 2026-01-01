@@ -15,6 +15,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 const authRoutes = require('./routes/auth');
 const oauthRoutes = require('./routes/oauth');
+const aiRoutes = require('./routes/ai');
 
 const app = express();
 
@@ -83,6 +84,7 @@ async function start() {
 app.get('/api/health', (_req, res) => res.json({ ok: true, db: mongoose.connection.readyState }));
 app.use('/api/auth', authRoutes);
 app.use('/api/oauth', oauthRoutes);
+app.use('/api/ai', aiRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

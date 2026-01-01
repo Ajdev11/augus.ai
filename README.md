@@ -49,6 +49,13 @@ Notes:
 - Use MongoDB Atlas or local Mongo (`mongodb://127.0.0.1:27017/augus_ai`).
 - Gmail requires 2‑Step Verification and an App Password (see below).
 
+### Server-side Gemini (no keys in frontend)
+Add to `server/.env`:
+```
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+Then restart the server (`npm run server` or `npm run dev`). The dashboard will use Gemini via backend endpoints; if the key is missing, it falls back to the local heuristic.
+
 3) Run
 ```
 npm run dev    # starts API (4000) + React (3000)
