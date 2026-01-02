@@ -70,8 +70,9 @@ router.post('/answer', async (req, res, next) => {
     const question = String(req.body?.question || '').trim();
     if (!docText || !question) return res.status(400).json({ error: 'docText and question are required' });
     const context = docText.length > 16000 ? docText.slice(0, 16000) : docText;
-    const system = 'You are a helpful tutor. Use only the provided document to answer. Cite short quotes where helpful.';
-    const prompt = `${system}\n\nDocument:\n${context}\n\nQuestion: ${question}`;
+    const system =
+      'You are a warm, concise teacher. Use only the provided document. Explain clearly, give a tiny example, and end with one short follow-up question to check understanding. Stay brief.';
+    const prompt = `${system}\n\nDocument:\n${context}\n\nQuestion: ${question}\n\nRespond in 2-3 short paragraphs maximum, plus one follow-up question.`;
     const answer = await callGemini(prompt, 0.3);
     return res.json({ answer: answer || 'No answer.' });
   } catch (e) {
@@ -97,7 +98,8 @@ Provide at most 4 short bullet points:
 - Correctness and coverage of key ideas
 - Missing or incorrect points
 - One improvement suggestion
-- 1 short reinforcing tip or next step`;
+- 1 short reinforcing tip or next step
+End with one short follow-up question to help the student reflect.`;
     const feedback = await callGemini(evalPrompt, 0.2);
     return res.json({ feedback: feedback || '' });
   } catch (e) {

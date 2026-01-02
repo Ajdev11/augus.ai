@@ -31,7 +31,11 @@ export default function SessionDashboard() {
   const [loadingDoc, setLoadingDoc] = useState(false);
   const [docError, setDocError] = useState('');
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Upload a PDF and click Start Session to begin. Ask me anything about your document.' },
+    {
+      role: 'assistant',
+      content:
+        'Upload a PDF and click Start Session. I can explain topics like a friendly teacher, summarize, quiz you, and generate flashcards.',
+    },
   ]);
   const [userInput, setUserInput] = useState('');
   const [micStatusMsg, setMicStatusMsg] = useState('');
@@ -544,6 +548,29 @@ export default function SessionDashboard() {
     setLiveTranscript('');
   }
 
+  function requireDocOrWarn() {
+    if (!docText) {
+      pushAssistant('Please upload a PDF first so I can help.');
+      return false;
+    }
+    return true;
+  }
+
+  function handleExplain() {
+    if (!requireDocOrWarn()) return;
+    ask('Explain the core ideas from this document like a friendly teacher for students. Use simple language and a tiny example, then ask me one quick check question.');
+  }
+
+  function handleSummarize() {
+    if (!requireDocOrWarn()) return;
+    ask('Summarize this document into 5 concise bullet points for quick study, then ask me one short comprehension check question.');
+  }
+
+  function handleFlashcards() {
+    if (!requireDocOrWarn()) return;
+    ask('Generate 8 short Q&A flashcards from this document. Format as Q: ... A: ... Keep them concise for quick revision.');
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Top bar */}
@@ -752,6 +779,38 @@ export default function SessionDashboard() {
 
           {/* Chat panel */}
           <div className="mt-10 w-full max-w-3xl">
+            {/* Quick actions */}
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-xs sm:text-sm text-white/80">
+              <span className="font-semibold">Teaching tools:</span>
+              <button
+                onClick={handleExplain}
+                className="rounded-full bg-white text-[#0b2545] px-3 py-1 font-semibold ring-1 ring-black/10 hover:bg-slate-50"
+              >
+                Explain
+              </button>
+              <button
+                onClick={handleSummarize}
+                className="rounded-full bg-white text-[#0b2545] px-3 py-1 font-semibold ring-1 ring-black/10 hover:bg-slate-50"
+              >
+                Summarize
+              </button>
+              <button
+                onClick={() => {
+                  if (!requireDocOrWarn()) return;
+                  generateQuiz();
+                }}
+                className="rounded-full bg-white text-[#0b2545] px-3 py-1 font-semibold ring-1 ring-black/10 hover:bg-slate-50"
+              >
+                Quiz me
+              </button>
+              <button
+                onClick={handleFlashcards}
+                className="rounded-full bg-white text-[#0b2545] px-3 py-1 font-semibold ring-1 ring-black/10 hover:bg-slate-50"
+              >
+                Flashcards
+              </button>
+            </div>
+
             <div className="rounded-2xl border border-black/10 bg-white shadow-sm p-4">
               <div className="space-y-3 max-h-[50vh] sm:max-h-[320px] overflow-y-auto">
                 {messages.map((m, i) => (
