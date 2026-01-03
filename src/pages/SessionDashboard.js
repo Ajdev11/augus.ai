@@ -58,6 +58,7 @@ export default function SessionDashboard() {
   // Voice input (SpeechRecognition)
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
+  const manualStopRef = useRef(false);
   const [liveTranscript, setLiveTranscript] = useState('');
   const silenceTimerRef = useRef(null);
   const lastResultTsRef = useRef(0);
@@ -217,15 +218,14 @@ export default function SessionDashboard() {
     rec.onend = () => {
       setListening(false);
       setMicStatusMsg('Mic paused');
-      // Always finalize what we have on end; if empty and awaiting, skip
-      if (awaitingAnswer && running && !expired) {
-        finalizeVoiceAnswer();
-      }
-      // If still waiting for next answer, restart automatically
-      if (awaitingAnswer && running && !expired) {
+      // Finalize whatever we heard
+      finalizeVoiceAnswer();
+      // Auto-restart if session is active and not manually stopped
+      if (running && !expired && !manualStopRef.current) {
         try {
           rec.start();
           setListening(true);
+          setMicStatusMsg('Listening…');
         } catch {}
       }
     };
@@ -238,14 +238,18 @@ export default function SessionDashboard() {
       } else {
         setMicStatusMsg('Microphone error');
       }
-      if (awaitingAnswer && running && !expired) {
-        // Fall back to skip on mic errors after a short moment
-        setTimeout(() => finalizeVoiceAnswer(), 500);
+      // Try to resume if session is active and not manually stopped
+      if (running && !expired && !manualStopRef.current) {
+        setTimeout(() => {
+          try {
+            rec.start();
+            setListening(true);
+            setMicStatusMsg('Listening…');
+          } catch {}
+        }, 300);
       }
       if (e?.error === 'not-allowed') {
         pushAssistant('Microphone permission denied. Please allow mic access and click Listen.');
-      } else if (e?.error === 'no-speech') {
-        // Will be handled by finalizeVoiceAnswer -> skip
       }
     };
     recognitionRef.current = rec;
@@ -259,6 +263,7 @@ export default function SessionDashboard() {
     const rec = recognitionRef.current;
     if (!rec) return;
     try {
+      manualStopRef.current = false;
       rec.start();
       setListening(true);
       setMicStatusMsg('Listening…');
@@ -268,6 +273,7 @@ export default function SessionDashboard() {
     const rec = recognitionRef.current;
     if (!rec) return;
     try {
+      manualStopRef.current = true;
       rec.stop();
       setListening(false);
       setMicStatusMsg('Mic paused');
@@ -283,11 +289,6 @@ export default function SessionDashboard() {
     }
     if (text) {
       ask(text);
-    } else if (awaitingAnswer) {
-      // No input captured: do NOT skip automatically; keep the conversation alive
-      pushAssistant("I didn't catch that. I'm listening—take your time. You can also say “hint”, “repeat”, or “skip” when ready.");
-      // Re-arm listening so the student can continue speaking
-      startListening();
     }
   }
 
@@ -319,8 +320,8 @@ export default function SessionDashboard() {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      if (pdf.numPages > 80) {
-        setDocError('PDF has too many pages (max 80). Please upload a smaller document.');
+      if (pdf.numPages > 200) {
+        setDocError('PDF has too many pages (max 200). Please upload a smaller document.');
         return '';
       }
       let text = '';
@@ -332,7 +333,9 @@ export default function SessionDashboard() {
       }
       return text.replace(/\s+/g, ' ').trim();
     } catch (e) {
-      setDocError('Unable to read PDF. Please try another file.');
+      console.error('PDF parse error', e);
+      const detail = e?.message || e?.toString() || 'unknown error';
+      setDocError(`Unable to read PDF: ${detail}. Please try another file.`);
       return '';
     } finally {
       setLoadingDoc(false);
@@ -558,17 +561,20 @@ export default function SessionDashboard() {
 
   function handleExplain() {
     if (!requireDocOrWarn()) return;
-    ask('Explain the core ideas from this document like a friendly teacher for students. Use simple language and a tiny example, then ask me one quick check question.');
+    ask('Teach me the core ideas from this document like a friendly teacher for students. Use simple language and a tiny example. Do not ask me a question back.');
+    startListening();
   }
 
   function handleSummarize() {
     if (!requireDocOrWarn()) return;
-    ask('Summarize this document into 5 concise bullet points for quick study, then ask me one short comprehension check question.');
+    ask('Summarize this document into 5 concise bullet points for quick study. Do not ask me a question back.');
+    startListening();
   }
 
   function handleFlashcards() {
     if (!requireDocOrWarn()) return;
     ask('Generate 8 short Q&A flashcards from this document. Format as Q: ... A: ... Keep them concise for quick revision.');
+    startListening();
   }
 
   return (
@@ -640,8 +646,8 @@ export default function SessionDashboard() {
                       setDocError('Please upload a PDF file.');
                       return;
                     }
-                    if (file.size > 12 * 1024 * 1024) {
-                      setDocError('PDF too large (max 12MB).');
+                    if (file.size > 20 * 1024 * 1024) {
+                      setDocError('PDF too large (max 20MB).');
                       return;
                     }
                     setDocName(file.name);
@@ -696,14 +702,17 @@ export default function SessionDashboard() {
                       pushAssistant('Please upload a PDF before starting the session so I can generate questions.');
                       return;
                     }
-                    // Friendly welcome before questions begin
-                    pushAssistant(
-                      `Welcome! We'll use "${docName || 'your document'}". I'll ask 5 short questions — reply in the chat to answer.`
-                    );
-                    await generateQuiz();
-                    setRunning(true);
-                    // begin listening for spoken answer
+                    // Friendly welcome before teaching
+                    pushAssistant(`Starting a guided walkthrough of "${docName || 'your document'}".`);
+                    // Auto-teach overview (no quiz)
+                    await ask('Teach me this document like a friendly teacher. Explain the main ideas in simple terms and add one tiny example. Do not ask me a question back.');
+                    // keep mic on for continued interaction
                     startListening();
+                    // Do not start quiz
+                    setQuiz([]);
+                    setQIndex(0);
+                    setAwaitingAnswer(false);
+                    setRunning(true);
                   } else {
                     setRunning(false);
                     stopListening();
@@ -720,12 +729,6 @@ export default function SessionDashboard() {
               >
                 Reset Session
               </button>
-            )}
-
-            {quiz.length > 0 && (
-              <span className="rounded-full bg-white/10 text-white px-3 py-2 text-xs sm:text-sm ring-1 ring-white/15">
-                Question {Math.min(qIndex + 1, quiz.length)} of {quiz.length}
-              </span>
             )}
 
             <button
@@ -793,15 +796,6 @@ export default function SessionDashboard() {
                 className="rounded-full bg-white text-[#0b2545] px-3 py-1 font-semibold ring-1 ring-black/10 hover:bg-slate-50"
               >
                 Summarize
-              </button>
-              <button
-                onClick={() => {
-                  if (!requireDocOrWarn()) return;
-                  generateQuiz();
-                }}
-                className="rounded-full bg-white text-[#0b2545] px-3 py-1 font-semibold ring-1 ring-black/10 hover:bg-slate-50"
-              >
-                Quiz me
               </button>
               <button
                 onClick={handleFlashcards}

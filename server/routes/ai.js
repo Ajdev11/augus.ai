@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = 'gemini-1.5-pro';
+// Allow override; otherwise try a list of common models
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
 function extractGeminiText(data) {
   const parts = data?.candidates?.[0]?.content?.parts;
@@ -16,27 +17,47 @@ async function callGemini(prompt, temperature = 0.3) {
     err.status = 503;
     throw err;
   }
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(
-      GEMINI_API_KEY
-    )}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature },
-      }),
+  const candidates = [
+    GEMINI_MODEL,
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro-latest',
+    'gemini-1.5-pro',
+    'gemini-1.0-pro',
+    'gemini-pro', // widely available text model
+  ];
+  const apiVersions = ['v1', 'v1beta']; // try v1 first, then v1beta
+  let lastErr;
+  for (const version of apiVersions) {
+    for (const model of candidates) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${encodeURIComponent(
+            GEMINI_API_KEY
+          )}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature },
+            }),
+          }
+        );
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          throw new Error(`(${res.status}) ${body || ''}`);
+        }
+        const data = await res.json();
+        return extractGeminiText(data);
+      } catch (e) {
+        lastErr = e;
+      }
     }
-  );
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    const err = new Error(`Gemini request failed (${res.status}) ${body || ''}`.trim());
-    err.status = res.status;
-    throw err;
   }
-  const data = await res.json();
-  return extractGeminiText(data);
+  const err = new Error(`Gemini request failed for all models tried. Last error: ${lastErr?.message || lastErr}`);
+  err.status = 502;
+  throw err;
 }
 
 router.post('/quiz', async (req, res, next) => {
@@ -71,8 +92,14 @@ router.post('/answer', async (req, res, next) => {
     if (!docText || !question) return res.status(400).json({ error: 'docText and question are required' });
     const context = docText.length > 16000 ? docText.slice(0, 16000) : docText;
     const system =
-      'You are a warm, concise teacher. Use only the provided document. Explain clearly, give a tiny example, and end with one short follow-up question to check understanding. Stay brief.';
-    const prompt = `${system}\n\nDocument:\n${context}\n\nQuestion: ${question}\n\nRespond in 2-3 short paragraphs maximum, plus one follow-up question.`;
+      'You are a warm, concise study guide teacher. Use only the provided document. Teach, do not ask questions. Do NOT quote long passages. Explain in your own words with:'
+      + '\n- A 1–2 sentence overview of the topic'
+      + '\n- 3–5 core takeaways in plain language'
+      + '\n- One tiny example or analogy'
+      + '\n- 2–3 practical steps or tips'
+      + '\n- A 1–2 sentence recap'
+      + '\nKeep it brief and conversational. No follow-up questions.';
+    const prompt = `${system}\n\nDocument:\n${context}\n\nTopic or question: ${question}\n\nRespond succinctly in this structure (Overview, Core takeaways, Example/Analogy, Steps/Tips, Recap).`;
     const answer = await callGemini(prompt, 0.3);
     return res.json({ answer: answer || 'No answer.' });
   } catch (e) {
@@ -94,12 +121,11 @@ Expected key concepts: ${(keywords || []).join(', ')}
 Student answer: ${studentAnswer}
 Use ONLY the provided document context:
 ${context}
-Provide at most 4 short bullet points:
-- Correctness and coverage of key ideas
-- Missing or incorrect points
-- One improvement suggestion
-- 1 short reinforcing tip or next step
-End with one short follow-up question to help the student reflect.`;
+ Provide at most 4 short bullet points:
+ - Correctness and coverage of key ideas
+ - Missing or incorrect points
+ - One improvement suggestion
+ - 1 short reinforcing tip or next step`;
     const feedback = await callGemini(evalPrompt, 0.2);
     return res.json({ feedback: feedback || '' });
   } catch (e) {
