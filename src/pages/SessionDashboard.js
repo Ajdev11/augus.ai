@@ -140,22 +140,39 @@ export default function SessionDashboard() {
     speak(text);
   }
 
-  // Basic TTS using the Web Speech API
+  // TTS using Web Speech API with chunking to avoid cutoff
   function speak(text) {
     try {
       if (typeof window === 'undefined' || !window.speechSynthesis) return;
       if (isMuted || !text) return;
       const synth = window.speechSynthesis;
-      // Cancel any ongoing utterance to avoid overlap
       synth.cancel();
-      const utterance = new SpeechSynthesisUtterance(String(text).slice(0, 500));
+      const cleaned = String(text || '').replace(/\s+/g, ' ').trim();
+      if (!cleaned) return;
+      // chunk by sentences, max ~250 chars each
+      const sentences = cleaned.split(/(?<=[.!?])\s+/);
+      const chunks = [];
+      let buf = '';
+      for (const s of sentences) {
+        if ((buf + ' ' + s).trim().length > 250) {
+          if (buf) chunks.push(buf.trim());
+          buf = s;
+        } else {
+          buf = buf ? `${buf} ${s}` : s;
+        }
+      }
+      if (buf) chunks.push(buf.trim());
       const voices = synth.getVoices?.() || [];
-      const en = voices.find(v => (v.lang || '').toLowerCase().startsWith('en'));
-      if (en) utterance.voice = en;
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.volume = Math.min(1, Math.max(0, ttsVolume));
-      synth.speak(utterance);
+      const en = voices.find((v) => (v.lang || '').toLowerCase().startsWith('en'));
+      chunks.forEach((chunk, idx) => {
+        const utter = new SpeechSynthesisUtterance(chunk);
+        if (en) utter.voice = en;
+        utter.rate = 1;
+        utter.pitch = 1;
+        utter.volume = Math.min(1, Math.max(0, ttsVolume));
+        if (idx === 0) synth.cancel();
+        synth.speak(utter);
+      });
     } catch {
       // no-op if TTS unavailable
     }
@@ -574,7 +591,7 @@ export default function SessionDashboard() {
 
   function handleFlashcards() {
     if (!requireDocOrWarn()) return;
-    ask('Generate 8 short Q&A flashcards from this document. Format as Q: ... A: ... Keep them concise for quick revision.');
+    ask('Create 10 concise flashcards from this document in the exact format: Q: <question> A: <answer>. Use plain language, keep each answer to one short sentence. Do not add commentary before or after.');
     startListening();
   }
 
