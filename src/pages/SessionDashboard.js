@@ -535,6 +535,7 @@ export default function SessionDashboard() {
       answer = localAnswer(question, docText || '');
     }
     setMessages((m) => [...m, { role: 'assistant', content: answer }]);
+    speak(answer);
   }
 
   function resetSession() {
