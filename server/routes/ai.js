@@ -3,7 +3,7 @@ const router = express.Router();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 // Allow override; otherwise try a list of common models
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-pro';
 
 function extractGeminiText(data) {
   const parts = data?.candidates?.[0]?.content?.parts;
@@ -19,14 +19,13 @@ async function callGemini(prompt, temperature = 0.3) {
   }
   const candidates = [
     GEMINI_MODEL,
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro-latest',
-    'gemini-1.5-pro',
+    'gemini-pro',
     'gemini-1.0-pro',
-    'gemini-pro', // widely available text model
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-pro-latest',
   ];
-  const apiVersions = ['v1', 'v1beta']; // try v1 first, then v1beta
+  // Prefer v1; many keys don’t need v1beta and v1beta can 404 on some models
+  const apiVersions = ['v1'];
   let lastErr;
   for (const version of apiVersions) {
     for (const model of candidates) {
@@ -52,6 +51,7 @@ async function callGemini(prompt, temperature = 0.3) {
         return extractGeminiText(data);
       } catch (e) {
         lastErr = e;
+        console.warn(`[Gemini] failed model=${model} version=${version}:`, e?.message || e);
       }
     }
   }
