@@ -53,8 +53,10 @@ Notes:
 Add to `server/.env`:
 ```
 GEMINI_API_KEY=your_gemini_api_key_here
+# Optional: override; otherwise defaults to gemini-pro and falls back through common models
+GEMINI_MODEL=gemini-pro
 ```
-Then restart the server (`npm run server` or `npm run dev`). The dashboard will use Gemini via backend endpoints; if the key is missing, it falls back to the local heuristic.
+Then restart the server (`npm run server` or `npm run dev`). The backend will call Gemini; if unavailable, it falls back to local heuristics.
 
 3) Run
 ```
