@@ -128,7 +128,7 @@ Behavior:
   - Run `npm install` to ensure server dependencies are installed.
 - No email received
   - Configure Gmail SMTP with an App Password; restart the server.
-  - Check API logs for `Email send error ...` or `Email preview URL ...` (Ethereal mode).
+  - Check API logs for `Email send error ...` or `Email preview URL ...` (Ethereal mode)
 
 ### Notes
 - PDF.js worker is configured; parsing runs in the browser.
