@@ -25,7 +25,7 @@ export async function apiFetch(path, options = {}) {
   try {
     json = await res.json();
   } catch {
-    // ignore non-JSON
+    
   }
   if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
   return json;
